@@ -136,7 +136,7 @@ The RiftedReality pack build (`tools/pack/build-pack.sh`) calls the jar directly
 ## Layout
 
 ```
-src/main/java/com/packobfscurer/
+src/main/java/me/amjadsmarzug/packobfscurer/
   Main.java                 GUI or CLI entry point (obfuscate, batch, verify, restore)
   core/                     the pipeline (no Swing here, so it is unit tested)
     PackObfuscator.java     read, strip, rename, rewrite, junk, verify, write

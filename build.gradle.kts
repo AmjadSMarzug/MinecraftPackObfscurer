@@ -6,9 +6,9 @@ plugins {
 
 val appVersion: String = (findProperty("appVersion") as String?) ?: "1.0.0"
 val appName = "PackObfuscator"
-val mainClassName = "com.packobfscurer.Main"
+val mainClassName = "me.amjadsmarzug.packobfscurer.Main"
 
-group = "com.packobfscurer"
+group = "me.amjadsmarzug.packobfscurer"
 version = appVersion
 
 java {
