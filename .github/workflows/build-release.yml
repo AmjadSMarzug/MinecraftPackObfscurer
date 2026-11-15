@@ -120,6 +120,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh release create --generate-notes reads the git history, so the repo must be checked out.
+      - uses: actions/checkout@v4
+
       - name: Download every platform build
         uses: actions/download-artifact@v4
         with:
