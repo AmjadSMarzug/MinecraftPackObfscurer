@@ -95,7 +95,7 @@ final class Widgets {
             setFocusPainted(false);
             setOpaque(false);
             setFont(primary ? Theme.HEADING : Theme.BODY);
-            setForeground(primary ? Color.WHITE : Theme.TEXT);
+            setForeground(primary ? Theme.ON_ACCENT : Theme.TEXT);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setBorder(BorderFactory.createEmptyBorder(primary ? 12 : 8, primary ? 26 : 16, primary ? 12 : 8, primary ? 26 : 16));
         }
@@ -134,7 +134,7 @@ final class Widgets {
             if (on) {
                 g2.setColor(Theme.ACCENT);
                 g2.fill(box);
-                g2.setColor(Color.WHITE);
+                g2.setColor(Theme.ON_ACCENT);
                 g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 Path2D tick = new Path2D.Double();
                 tick.moveTo(x + 5, y + 9.5);

@@ -1,0 +1,71 @@
+name: ffmpeg install scripts
+
+# Runs the ffmpeg installers on a clean runner for each OS, then checks that ffmpeg with libvorbis
+# is on the PATH. This is the only place the install branches get exercised, since they are not
+# run on a machine that already has ffmpeg.
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/ffmpeg-scripts.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/ffmpeg-scripts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check ffmpeg is not already installed (so the install branch runs)
+        shell: bash
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg already present at $(command -v ffmpeg); the installer will exit early."
+          else
+            echo "ffmpeg not present; the installer will install it."
+          fi
+
+      - name: Install ffmpeg (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x scripts/install-ffmpeg.sh
+          scripts/install-ffmpeg.sh
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/install-ffmpeg.ps1
+
+      - name: Verify ffmpeg with libvorbis (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x scripts/install-ffmpeg.sh
+          scripts/install-ffmpeg.sh --check
+
+      - name: Verify ffmpeg with libvorbis (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/install-ffmpeg.ps1 -Check
+
+      - name: Encode a test tone to Ogg Vorbis
+        shell: bash
+        run: |
+          ffmpeg -hide_banner -loglevel error -f lavfi -i "sine=frequency=440:duration=1" \
+            -c:a libvorbis -q:a 3 tone.ogg
+          test "$(head -c 4 tone.ogg)" = "OggS"
+          echo "tone.ogg: $(stat -c %s tone.ogg 2>/dev/null || stat -f %z tone.ogg) bytes"

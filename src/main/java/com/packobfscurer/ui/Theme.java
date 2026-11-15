@@ -6,24 +6,32 @@ import java.awt.Color;
 import java.awt.Font;
 
 /**
- * Colours and fonts for the app. Metal is used as the base look and feel so the window looks the
- * same on Windows, macOS and Linux. Only the colours and fonts above are customised.
+ * Black-and-white palette that follows the operating system's light or dark setting.
+ *
+ * Colours are chosen once, by {@link #install(Mode)}, before any component is built.
+ * Only greys are used: black and white, with shades in between.
  */
 final class Theme {
 
-    static final Color BG = new Color(0x0E1017);
-    static final Color CARD = new Color(0x171A23);
-    static final Color CARD_HI = new Color(0x1F2331);
-    static final Color INPUT = new Color(0x0F1219);
-    static final Color BORDER = new Color(0x2A2F3D);
-    static final Color TEXT = new Color(0xE8EAF2);
-    static final Color MUTED = new Color(0x8A92A6);
-    static final Color ACCENT = new Color(0x7C6CFF);
-    static final Color ACCENT_HI = new Color(0x9A8DFF);
-    static final Color ACCENT_DIM = new Color(0x3A3370);
-    static final Color OK = new Color(0x3DD68C);
-    static final Color WARN = new Color(0xF5B942);
-    static final Color ERROR = new Color(0xFF5C6C);
+    enum Mode { LIGHT, DARK }
+
+    // Colours. Assigned by install(); the defaults are the dark palette.
+    static Color BG = rgb(0x000000);
+    static Color CARD = rgb(0x111111);
+    static Color CARD_HI = rgb(0x1C1C1C);
+    static Color INPUT = rgb(0x0A0A0A);
+    static Color BORDER = rgb(0x333333);
+    static Color TEXT = rgb(0xF2F2F2);
+    static Color MUTED = rgb(0x9A9A9A);
+    /** Fill for primary buttons, ticked boxes and the drop-zone highlight. */
+    static Color ACCENT = rgb(0xFFFFFF);
+    static Color ACCENT_HI = rgb(0xD9D9D9);
+    static Color ACCENT_DIM = rgb(0x3A3A3A);
+    /** Text drawn on top of ACCENT. */
+    static Color ON_ACCENT = rgb(0x000000);
+    static Color OK = rgb(0xFFFFFF);
+    static Color WARN = rgb(0xBDBDBD);
+    static Color ERROR = rgb(0xFFFFFF);
 
     static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 22);
     static final Font HEADING = new Font(Font.SANS_SERIF, Font.BOLD, 14);
@@ -35,7 +43,48 @@ final class Theme {
     private Theme() {
     }
 
-    static void install() {
+    private static Color rgb(int v) {
+        return new Color(v);
+    }
+
+    /** Sets the palette for the given mode. Call before building any component. */
+    static void setMode(Mode mode) {
+        if (mode == Mode.LIGHT) {
+            BG = rgb(0xFFFFFF);
+            CARD = rgb(0xF4F4F4);
+            CARD_HI = rgb(0xE6E6E6);
+            INPUT = rgb(0xFFFFFF);
+            BORDER = rgb(0xBDBDBD);
+            TEXT = rgb(0x000000);
+            MUTED = rgb(0x5E5E5E);
+            ACCENT = rgb(0x000000);
+            ACCENT_HI = rgb(0x333333);
+            ACCENT_DIM = rgb(0xCCCCCC);
+            ON_ACCENT = rgb(0xFFFFFF);
+            OK = rgb(0x000000);
+            WARN = rgb(0x555555);
+            ERROR = rgb(0x000000);
+        } else {
+            BG = rgb(0x000000);
+            CARD = rgb(0x111111);
+            CARD_HI = rgb(0x1C1C1C);
+            INPUT = rgb(0x0A0A0A);
+            BORDER = rgb(0x333333);
+            TEXT = rgb(0xF2F2F2);
+            MUTED = rgb(0x9A9A9A);
+            ACCENT = rgb(0xFFFFFF);
+            ACCENT_HI = rgb(0xD9D9D9);
+            ACCENT_DIM = rgb(0x3A3A3A);
+            ON_ACCENT = rgb(0x000000);
+            OK = rgb(0xFFFFFF);
+            WARN = rgb(0xBDBDBD);
+            ERROR = rgb(0xFFFFFF);
+        }
+    }
+
+    /** Installs the palette and the Swing defaults for the given mode. */
+    static void install(Mode mode) {
+        setMode(mode);
         try {
             UIManager.setLookAndFeel(new MetalLookAndFeel());
         } catch (Exception ignored) {

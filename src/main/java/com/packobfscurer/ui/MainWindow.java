@@ -131,7 +131,7 @@ public final class MainWindow extends JFrame {
     }
 
     public static void open() {
-        Theme.install();
+        Theme.install(SystemTheme.detect());
         MainWindow w = new MainWindow();
         w.setVisible(true);
     }
