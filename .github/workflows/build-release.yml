@@ -1,0 +1,143 @@
+name: Build and release
+
+# Every push and pull request runs the tests and builds all platforms.
+# Pushing a tag like v1.2.0 also publishes a GitHub release with every file.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Run tests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew test --no-daemon --console=plain
+
+      - name: Save test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test-results/test/
+          retention-days: 7
+
+  package:
+    name: Package (${{ matrix.platform }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          # Tags must look like v1.2.3. Anything else gets a dev version 1.0.<run number>.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag '$GITHUB_REF_NAME' must look like v1.2.3"
+              exit 1
+            fi
+            version="$tag"
+          else
+            version="1.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building version $version"
+
+      - name: Build portable archive
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew portableZip -PappVersion=${{ steps.version.outputs.version }} --no-daemon --console=plain
+
+      # The installer needs tools that differ per OS (WiX on Windows, hdiutil on macOS, dpkg on Linux).
+      # If it fails, the portable build still ships and the job stays green with a warning.
+      - name: Build native installer
+        id: installer
+        shell: bash
+        continue-on-error: true
+        run: |
+          ./gradlew jpackageInstaller -PappVersion=${{ steps.version.outputs.version }} --no-daemon --console=plain
+
+      - name: Warn if the installer was skipped
+        if: steps.installer.outcome == 'failure'
+        shell: bash
+        run: echo "::warning::Native installer failed on ${{ matrix.platform }}. The portable archive is still published."
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: PackObfuscator-${{ matrix.platform }}
+          path: build/dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download every platform build
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: PackObfuscator-*
+          merge-multiple: true
+
+      - name: Create checksums
+        shell: bash
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Pack Obfuscator $GITHUB_REF_NAME" \
+            --generate-notes
