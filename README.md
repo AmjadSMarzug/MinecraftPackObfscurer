@@ -90,6 +90,24 @@ On Windows, run `scripts\install-ffmpeg.ps1` (winget, Chocolatey or Scoop), then
 - **Unsigned builds.** Windows SmartScreen and macOS Gatekeeper will warn about the app on first launch because it is not code-signed.
 - **Free-text colons.** Namespace renaming changes any string that starts with a renamed namespace followed by `:`, including prose. This is rare in packs, and `--verify` will show it if a text string breaks.
 
+## Updates
+
+The app checks GitHub for a newer release once a day, in the background. When one exists, a bar appears
+above the window with an **Update** button. The update asks first, downloads the installer for your system,
+checks it against the published `SHA256SUMS.txt`, and only then starts it:
+
+| System | What the update does |
+| --- | --- |
+| Linux (installed from the RPM) | Runs `rpm -Uvh` through `pkexec`, so you are asked for your password |
+| Windows | Opens the new `.exe` installer for you to finish |
+| macOS | Opens the new `.dmg`; drag the app into Applications |
+| Linux portable zip, or any other install | Opens the release page. Automatic update is not possible here |
+
+Command line: `PackObfuscator --check-update`, and `PackObfuscator --update` to download and install.
+
+While the repository is private, the check needs a GitHub token that can read it, in the
+`PACKOBF_UPDATE_TOKEN` environment variable. Without it, the check reports that no release was found.
+
 ## Downloads
 
 Each tagged release (`v1.2.3`) publishes:

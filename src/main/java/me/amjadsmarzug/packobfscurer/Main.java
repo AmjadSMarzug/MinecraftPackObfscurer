@@ -92,6 +92,10 @@ public final class Main {
                 return restore(args);
             case "--batch":
                 return batch(args);
+            case "--check-update":
+                return update(false);
+            case "--update":
+                return update(true);
             default:
                 return obfuscate(args);
         }
@@ -231,6 +235,35 @@ public final class Main {
         System.out.println("Restored " + r.restoredFiles() + " file name(s), removed " + r.removedJunk()
                 + " junk file(s). Output: " + out);
         System.out.println("Not restored: " + String.join(", ", r.notes()) + ".");
+        return 0;
+    }
+
+    /** Checks GitHub for a newer release. With install=true, downloads and starts the installer for this system. */
+    private static int update(boolean install) throws Exception {
+        String token = me.amjadsmarzug.packobfscurer.update.UpdateChecker.tokenFromEnvironment();
+        var service = new me.amjadsmarzug.packobfscurer.update.UpdateService(
+                me.amjadsmarzug.packobfscurer.update.UpdateService.currentVersion(),
+                me.amjadsmarzug.packobfscurer.update.UpdateChecker.REPO, token);
+        var status = service.check();
+        if (status.latest().isEmpty()) {
+            System.out.println("No release found. If the repository is private, set PACKOBF_UPDATE_TOKEN to a token that can read it.");
+            return 1;
+        }
+        if (!status.updateAvailable()) {
+            System.out.println("Up to date (version " + status.current() + ").");
+            return 0;
+        }
+        var release = status.latest().orElseThrow();
+        System.out.println("Version " + release.version() + " is available (you have " + status.current() + "): "
+                + release.pageUrl());
+        if (!install) {
+            System.out.println("Run with --update to download and install it.");
+            return 0;
+        }
+        var kind = me.amjadsmarzug.packobfscurer.update.Installers.detect();
+        var file = service.download(release, kind, System.out::println);
+        me.amjadsmarzug.packobfscurer.update.Installers.start(file, kind);
+        System.out.println("Installer started.");
         return 0;
     }
 
