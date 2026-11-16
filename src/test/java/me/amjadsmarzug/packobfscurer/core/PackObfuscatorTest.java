@@ -328,7 +328,7 @@ class PackObfuscatorTest {
         assertTrue(pngs.size() >= 4, "each model part should have its own PNG");
         assertEquals(4, models.size());
         assertEquals(added.size(), r.junkFiles(), "every added junk file is counted");
-        assertTrue(r.junkFolders() > 0);
+        assertEquals(0, r.junkFolders(), "junk is flat: no subfolders");
         assertTrue(verifyClean(r), r.warnings().toString());
 
         for (String png : pngs) {
@@ -348,10 +348,6 @@ class PackObfuscatorTest {
                     assertTrue(added.contains("assets/" + ns + "/textures/" + rel + ".png"), ref);
                 }
             }
-        }
-        try (ZipFile zf = new ZipFile(junky.toFile())) {
-            assertTrue(zf.stream().anyMatch(z -> z.isDirectory() && z.getName().startsWith("assets/")),
-                    "junk folders should be real zip directory entries");
         }
     }
 
@@ -627,7 +623,7 @@ class PackObfuscatorTest {
         assertEquals(0xFFFF0000, split.getRGB(2, 2), "the used box keeps the real pixels");
         for (int y = 0; y < 16; y++) {
             for (int x = 8; x < 16; x++) {
-                assertEquals(0, split.getRGB(x, y) >>> 24, "transparent source pixel became opaque at " + x + "," + y);
+                assertEquals(0, split.getRGB(x, y) >>> 24, "pixel outside the box must be transparent at " + x + "," + y);
             }
         }
     }

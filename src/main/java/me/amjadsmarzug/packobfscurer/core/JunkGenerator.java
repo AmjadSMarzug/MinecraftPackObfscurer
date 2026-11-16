@@ -39,14 +39,13 @@ import java.util.function.Supplier;
 final class JunkGenerator {
 
     private static final int[] TEXTURE_SIZES = {16, 32};
-    private static final int SUBFOLDERS_PER_NAMESPACE = 4;
     private static final int MAX_ATTEMPTS = 200;
     private static final int MAX_REAL_TEXTURES = 256;
     private static final String[] PARENTS = {"minecraft:item/generated", "minecraft:item/handheld"};
     private static final String[] FACES = {"north", "south", "east", "west", "up", "down"};
 
     /** Where a junk file lives: namespace, plus the path inside its type folder without extension. */
-    private record Placed(String namespace, String relative) {
+    private record Placed(String namespace, String relative, String zipPath) {
     }
 
     /** A junk texture other junk models may point at. */
@@ -66,10 +65,6 @@ final class JunkGenerator {
     private final Optional<Path> ffmpeg;
     private final List<String> namespaces;
     private final SortedMap<String, byte[]> out = new TreeMap<>();
-    private final Set<String> dirs = new TreeSet<>();
-    private final Map<String, String> roots = new HashMap<>();
-    private final Map<String, List<String>> subfolders = new HashMap<>();
-    private final List<TextureRef> textures = new ArrayList<>();
     private final Set<String> seen = new HashSet<>();
     private final List<String> warnings = new ArrayList<>();
 
@@ -101,6 +96,8 @@ final class JunkGenerator {
      * @param sourceFiles the pack's own files. Some junk textures copy real pixels from these, so that
      *                    part of a junk texture looks like the pack's art. Pass an empty map to skip that.
      */
+    /**
+     */
     static Result generate(PackOptions.Junk junk, Set<AssetKey> owned, Set<String> existing,
                            Random rnd, boolean minify, Optional<Path> ffmpeg, Map<String, byte[]> sourceFiles) {
         return new JunkGenerator(owned, existing, rnd, minify, ffmpeg, sourceFiles).run(junk);
@@ -113,27 +110,18 @@ final class JunkGenerator {
         if (namespaces.isEmpty()) {
             namespaces.add("minecraft");
         }
-        for (String ns : namespaces) {
-            roots.put(ns, hex());
-            List<String> subs = new ArrayList<>();
-            for (int i = 0; i < SUBFOLDERS_PER_NAMESPACE; i++) {
-                subs.add(hex().substring(0, 4));
-            }
-            subfolders.put(ns, subs);
-        }
 
         // Textures first, so junk models have something to point at.
         for (int i = 0; i < junk.textures(); i++) {
             int size = TEXTURE_SIZES[rnd.nextInt(TEXTURE_SIZES.length)];
-            Placed p = place(pickNamespace(), "textures", ".png");
-            // Roughly a third of the textures carry a real rectangle from the pack.
+            // Roughly a third of the textures carry a real rectangle from the pack, and junk models reference those.
             boolean hybrid = !realImages.isEmpty() && rnd.nextInt(3) == 0;
+            Placed p = place(pickNamespace(), "textures", ".png");
             Rect[] region = new Rect[1];
             byte[] content = unique(() -> hybrid ? pngWithRealPixels(size, region) : png(size));
-            out.put("assets/" + p.namespace() + "/textures/" + p.relative() + ".png", content);
-            TextureRef ref = new TextureRef(p.namespace() + ":" + p.relative(), size, hybrid ? region[0] : null);
-            textures.add(ref);
+            out.put(p.zipPath(), content);
             if (hybrid) {
+                TextureRef ref = new TextureRef(p.namespace() + ":" + p.relative(), size, region[0]);
                 hybrids.add(ref);
             }
         }
@@ -143,20 +131,13 @@ final class JunkGenerator {
             // The first models each use one hybrid texture on their first part, so every real-looking texture is referenced.
             TextureRef anchor = i < hybrids.size() ? hybrids.get(i) : null;
             Draft draft = uniqueDraft(() -> buildDraft(ns, anchor));
-            out.put("assets/" + ns + "/models/" + p.relative() + ".json", draft.model());
+            out.put(p.zipPath(), draft.model());
             out.putAll(draft.textures());
             partTextures += draft.textures().size();
         }
         int sounds = addSounds(junk.sounds());
         int textureTotal = junk.textures() + partTextures;
-
-        addEmptyFolders(Math.max(1, junk.total() / 8));
-
-        // Every junk folder becomes a real zip directory entry, so empty folders survive the zip.
-        for (String dir : dirs) {
-            out.putIfAbsent(dir, new byte[0]);
-        }
-        return new Result(out, junk.models(), textureTotal, sounds, dirs.size(), warnings);
+        return new Result(out, junk.models(), textureTotal, sounds, 0, warnings);
     }
 
     private int addSounds(int count) {
@@ -173,7 +154,7 @@ final class JunkGenerator {
             Placed p = place(pickNamespace(), "sounds", ".ogg");
             try {
                 byte[] ogg = unique(this::soundBytes);
-                out.put("assets/" + p.namespace() + "/sounds/" + p.relative() + ".ogg", ogg);
+                out.put(p.zipPath(), ogg);
                 added++;
             } catch (UncheckedIOException e) {
                 warnings.add("A junk sound could not be encoded and was skipped: " + e.getCause().getMessage());
@@ -187,38 +168,16 @@ final class JunkGenerator {
         return namespaces.get(rnd.nextInt(namespaces.size()));
     }
 
-    /** A new path under a junk root, unused in the pack and in the output so far. */
+    /**
+     * A free path for one junk file, directly in its type folder (assets/ns/textures or assets/ns/models).
+     * Junk never goes into subfolders, so it sits next to the pack's own files.
+     */
     private Placed place(String ns, String typeFolder, String ext) {
-        List<String> subs = subfolders.get(ns);
         while (true) {
-            String sub = subs.get(rnd.nextInt(subs.size()));
-            String relative = roots.get(ns) + "/" + sub + "/" + hex();
-            String path = "assets/" + ns + "/" + typeFolder + "/" + relative + ext;
-            if (!existing.contains(path) && !out.containsKey(path) && !reserved.contains(path)) {
-                addDirs("assets/" + ns + "/" + typeFolder + "/", relative);
-                return new Placed(ns, relative);
-            }
-        }
-    }
-
-    private void addDirs(String base, String relative) {
-        String[] parts = relative.split("/");
-        StringBuilder sb = new StringBuilder(base);
-        for (int i = 0; i < parts.length - 1; i++) {
-            sb.append(parts[i]).append('/');
-            dirs.add(sb.toString());
-        }
-    }
-
-    private void addEmptyFolders(int count) {
-        String[] types = {"textures", "models", "sounds"};
-        for (int i = 0; i < count; i++) {
-            String ns = pickNamespace();
-            String type = types[rnd.nextInt(types.length)];
-            String dir = "assets/" + ns + "/" + type + "/" + roots.get(ns) + "/" + hex() + "/";
-            if (!existing.contains(dir) && !out.containsKey(dir)) {
-                dirs.add(dir);
-                dirs.add("assets/" + ns + "/" + type + "/" + roots.get(ns) + "/");
+            String relative = hex();
+            String zip = "assets/" + ns + "/" + typeFolder + "/" + relative + ext;
+            if (!existing.contains(zip) && !out.containsKey(zip) && !reserved.contains(zip)) {
+                return new Placed(ns, relative, zip);
             }
         }
     }
@@ -357,7 +316,7 @@ final class JunkGenerator {
             boolean real = !realImages.isEmpty() && rnd.nextInt(3) == 0;
             Rect[] region = new Rect[1];
             byte[] png = real ? pngWithRealPixels(size, region) : png(size);
-            String path = "assets/" + ns + "/textures/" + p.relative() + ".png";
+            String path = p.zipPath();
             pngs.put(path, png);
             reserved.add(path);
             parts.add(new TextureRef(ns + ":" + p.relative(), size, real ? region[0] : null));

@@ -51,7 +51,7 @@ the full list. Exit code 0 means success, 1 means failure, and 2 means the comma
 - Replaces cube and group names, and removes the group tree, which the game does not read.
 - Strips credits, PNG text, and Vorbis tags from sounds, fixes zip timestamps, and shuffles the order of
   entries and JSON keys.
-- Adds decoy models, textures, sounds and folders. None of them are referenced by the real files.
+- Adds decoy models, textures and sounds, placed directly in the texture, model and sound folders. None of them are referenced by the real files.
 - Checks the output for broken JSON, undecodable images, non-Ogg sounds and missing references.
 - Writes a name map, `<name>-obfuscated.mapping.json`, that can undo the renames.
 
@@ -77,8 +77,8 @@ or `scripts/install-ffmpeg.ps1` (Windows) installs it.
 - If a pack replaces a vanilla model, texture or sound, the replacement only works if everything that uses
   it is also replaced. Test in game.
 - The checks can't see vanilla assets, so `minecraft:` references are not verified.
-- A directory atlas loads every texture under its folder. Decoys live in random folders, so they only
-  appear in an atlas if you point one at the pack root.
+- A directory atlas loads every texture in its folder. Decoy textures sit directly in the texture folders,
+  so they can show up in an atlas that loads one of those folders.
 - Split textures were checked against the original pixels with a script. Check a few split models in
   game too.
 - The Windows and macOS builds are not code-signed, so the operating system will warn on first launch.

@@ -292,13 +292,13 @@ final class TextureSplitter {
         BufferedImage source = decode(out.get(textureZipPath(sourceRef)));
         int w = source.getWidth();
         int h = source.getHeight();
-        // Junk keeps the original alpha everywhere, so transparent areas stay transparent. Item textures are
-        // mostly transparent, and an opaque filler would show up as solid squares wherever the game samples
-        // just outside a face's UV box. Only the colour is random.
+        // Everything outside the part's UV box is fully transparent, with random colour data hidden under the
+        // alpha. The game can sample a little past a UV box (filtering, atlas edges), and any opaque filler there
+        // would show as noise. Transparent filler does not show, and the colour stays random.
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                img.setRGB(x, y, (source.getRGB(x, y) & 0xFF000000) | rnd.nextInt(0x1000000));
+                img.setRGB(x, y, rnd.nextInt(0x1000000));
             }
         }
         for (Face f : part.faces()) {
