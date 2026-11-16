@@ -58,6 +58,15 @@ val isWindows = osName.contains("win")
 val isMac = osName.contains("mac")
 
 // jpackage ships with the JDK that runs Gradle (setup-java provides it in CI).
+// The launcher and installer icon: .ico on Windows, .icns on macOS, .png on Linux.
+val iconPath: String = layout.projectDirectory.file(
+    when {
+        System.getProperty("os.name").lowercase().contains("win") -> "packaging/icons/logo.ico"
+        System.getProperty("os.name").lowercase().contains("mac") -> "packaging/icons/logo.icns"
+        else -> "packaging/icons/logo-256.png"
+    }
+).asFile.absolutePath
+
 val jpackageExe: String = File(System.getProperty("java.home"), "bin/" + (if (isWindows) "jpackage.exe" else "jpackage")).absolutePath
 
 val stageJar = tasks.register<Copy>("stageJpackageInput") {
@@ -85,6 +94,8 @@ val appImage = tasks.register<Exec>("jpackageAppImage") {
         "--vendor", "PackObfuscator",
         "--java-options", "-Xmx1g",
         "--java-options", "-Dfile.encoding=UTF-8"
+   ,
+        "--icon", iconPath
     )
 }
 
@@ -121,6 +132,7 @@ fun jpackageArgs(outDir: File, type: List<String>): List<String> =
         "--vendor", "PackObfuscator",
         "--description", "Obfuscates Minecraft resource packs",
         "--license-file", layout.projectDirectory.file("LICENSE").asFile.absolutePath,
+        "--icon", iconPath,
         "--java-options", "-Xmx1g",
         "--java-options", "-Dfile.encoding=UTF-8"
     ) + type

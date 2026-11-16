@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect x="0" y="0" width="512" height="512" rx="104" fill="#000000"/>
+  <!-- top face -->
+  <polygon points="256,92 398,174 256,256 114,174" fill="#FFFFFF"/>
+  <!-- left face -->
+  <polygon points="114,174 256,256 256,420 114,338" fill="#BDBDBD"/>
+  <!-- right face -->
+  <polygon points="256,256 398,174 398,338 256,420" fill="#6E6E6E"/>
+  <!-- scrambled tiles on the right face -->
+  <rect x="290" y="250" width="26" height="26" fill="#FFFFFF"/>
+  <rect x="326" y="226" width="26" height="26" fill="#2A2A2A"/>
+  <rect x="290" y="300" width="26" height="26" fill="#2A2A2A"/>
+  <rect x="352" y="282" width="26" height="26" fill="#FFFFFF"/>
+  <rect x="318" y="326" width="26" height="26" fill="#FFFFFF"/>
+  <!-- outline -->
+  <polygon points="256,92 398,174 398,338 256,420 114,338 114,174" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linejoin="round"/>
+</svg>

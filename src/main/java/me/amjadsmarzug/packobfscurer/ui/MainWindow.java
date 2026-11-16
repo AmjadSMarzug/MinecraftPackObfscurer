@@ -134,6 +134,7 @@ public final class MainWindow extends JFrame {
             }
         });
 
+        setIconImages(appIcons());
         buildUi();
         loadPrefs();
         checkForUpdates();
@@ -142,6 +143,21 @@ public final class MainWindow extends JFrame {
         setMinimumSize(new Dimension(1000, 900));
         setSize(1180, 960);
         setLocationRelativeTo(null);
+    }
+
+    /** The logo at several sizes, so the window manager can pick the one it needs. */
+    private static List<java.awt.Image> appIcons() {
+        List<java.awt.Image> icons = new ArrayList<>();
+        for (int size : new int[]{16, 32, 48, 64, 128, 256, 512}) {
+            try (var in = MainWindow.class.getResourceAsStream("/icons/logo-" + size + ".png")) {
+                if (in != null) {
+                    icons.add(javax.imageio.ImageIO.read(in));
+                }
+            } catch (java.io.IOException ignored) {
+                // A missing icon is cosmetic.
+            }
+        }
+        return icons;
     }
 
     public static void open() {
