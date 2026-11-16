@@ -30,7 +30,7 @@ class UpdateTest {
 
     @Test
     void installerIsPickedPerKind() {
-        Release r = new Release("v2.1.0", Version.parse("2.1.0").orElseThrow(), "page", List.of(
+        Release r = new Release("v2.1.0", Version.parse("2.1.0").orElseThrow(), "page", "", List.of(
                 new Release.Asset("PackObfuscator-2.1.0.exe", "u1", 1),
                 new Release.Asset("PackObfuscator-2.1.0.dmg", "u2", 1),
                 new Release.Asset("packobfuscator-2.1.0-1.x86_64.rpm", "u3", 1),

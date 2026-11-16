@@ -107,15 +107,11 @@ public final class MainWindow extends JFrame {
 
     private Path lastOutput;
 
-    private final JPanel updateBar = new Widgets.Card(Theme.CARD_HI, Theme.BORDER, 12, 10);
-    private final JLabel updateText = Widgets.muted("");
-    private final JButton updateButton = new Widgets.Button("Update", true);
-    private final JButton laterButton = new Widgets.Button("Later", false);
-    private Release availableRelease;
+    private final JButton checkUpdatesButton = new Widgets.Button("Check for updates", false);
     private SwingWorker<?, String> worker;
 
     private MainWindow() {
-        super("Pack Obfuscator");
+        super("Pack Obfuscator - version " + UpdateService.currentVersion());
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -174,7 +170,7 @@ public final class MainWindow extends JFrame {
         root.setBorder(BorderFactory.createEmptyBorder(20, 22, 18, 22));
         setContentPane(root);
 
-        root.add(topBar(), BorderLayout.NORTH);
+        root.add(header(), BorderLayout.NORTH);
 
         JPanel body = new JPanel(new GridBagLayout());
         body.setOpaque(false);
@@ -255,35 +251,26 @@ public final class MainWindow extends JFrame {
         status.setForeground(Theme.MUTED);
     }
 
-    /** The update bar sits above the header. It stays hidden unless a newer release exists. */
-    private JPanel topBar() {
-        JPanel top = new JPanel(new BorderLayout(0, 10));
-        top.setOpaque(false);
-        updateBar.setLayout(new BorderLayout(12, 0));
-        updateBar.setVisible(false);
-        updateText.setForeground(Theme.TEXT);
-        updateBar.add(updateText, BorderLayout.CENTER);
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        buttons.setOpaque(false);
-        laterButton.setFont(Theme.SMALL);
-        updateButton.setFont(Theme.SMALL);
-        buttons.add(laterButton);
-        buttons.add(updateButton);
-        updateBar.add(buttons, BorderLayout.EAST);
-        updateButton.addActionListener(e -> installUpdate());
-        laterButton.addActionListener(e -> updateBar.setVisible(false));
-        top.add(updateBar, BorderLayout.NORTH);
-        top.add(header(), BorderLayout.CENTER);
-        return top;
-    }
-
-    /** Checks GitHub at most once a day, in the background. Offline or failing checks stay silent. */
+    /**
+     * Checks GitHub at most once a day, in the background. When a newer release exists, the update
+     * window opens.
+     */
     private void checkForUpdates() {
         long last = PREFS.getLong(PREF_LAST_UPDATE_CHECK, 0);
         if (System.currentTimeMillis() - last < UPDATE_CHECK_INTERVAL_MS) {
             return;
         }
+        runUpdateCheck(false);
+    }
+
+    /** The "Check for updates" button. Always checks, and says so when there is nothing new. */
+    private void checkNow() {
+        runUpdateCheck(true);
+    }
+
+    private void runUpdateCheck(boolean manual) {
         String token = UpdateChecker.tokenFromEnvironment();
+        checkUpdatesButton.setEnabled(false);
         SwingWorker<UpdateService.Status, Void> check = new SwingWorker<>() {
             @Override
             protected UpdateService.Status doInBackground() throws Exception {
@@ -293,91 +280,33 @@ public final class MainWindow extends JFrame {
 
             @Override
             protected void done() {
+                checkUpdatesButton.setEnabled(true);
                 try {
                     UpdateService.Status status = get();
-                    if (status.updateAvailable()) {
-                        showUpdate(status.latest().orElseThrow());
+                    if (status.latest().isEmpty()) {
+                        if (manual) {
+                            JOptionPane.showMessageDialog(MainWindow.this,
+                                    "No release was found. If the releases are private, set PACKOBF_UPDATE_TOKEN.",
+                                    "Check for updates", JOptionPane.INFORMATION_MESSAGE);
+                        }
+                    } else if (status.updateAvailable()) {
+                        new UpdateDialog(MainWindow.this, status).setVisible(true);
+                    } else if (manual) {
+                        JOptionPane.showMessageDialog(MainWindow.this,
+                                "You have the latest version (" + status.current() + ").",
+                                "Check for updates", JOptionPane.INFORMATION_MESSAGE);
                     }
-                } catch (Exception ignored) {
-                    // No network, or the repository is private and no token is set. Not worth a dialog.
+                } catch (Exception e) {
+                    if (manual) {
+                        JOptionPane.showMessageDialog(MainWindow.this,
+                                "Could not check for updates: " + e.getMessage(),
+                                "Check for updates", JOptionPane.WARNING_MESSAGE);
+                    }
+                    // A scheduled check that fails (offline, for example) stays silent.
                 }
             }
         };
         check.execute();
-    }
-
-    private void showUpdate(Release release) {
-        availableRelease = release;
-        updateText.setText("Version " + release.version() + " is available. You have " + UpdateService.currentVersion() + ".");
-        updateBar.setVisible(true);
-        updateBar.revalidate();
-    }
-
-    private void installUpdate() {
-        if (availableRelease == null) {
-            return;
-        }
-        Installers.Kind kind = Installers.detect();
-        if (kind == Installers.Kind.OTHER) {
-            openReleasePage();
-            return;
-        }
-        String how = switch (kind) {
-            case WINDOWS -> "The installer will open. Finish it there.";
-            case MACOS -> "The disk image will open. Drag the app into Applications.";
-            case LINUX_RPM -> "You will be asked for your password to install the RPM.";
-            default -> "";
-        };
-        int choice = JOptionPane.showConfirmDialog(this,
-                "Download and install version " + availableRelease.version() + "?\n" + how,
-                "Update", JOptionPane.YES_NO_OPTION);
-        if (choice != JOptionPane.YES_OPTION) {
-            return;
-        }
-        Release release = availableRelease;
-        String token = UpdateChecker.tokenFromEnvironment();
-        setBusy(true);
-        appendLog("== Update to " + release.version());
-        worker = new SwingWorker<java.nio.file.Path, String>() {
-            @Override
-            protected java.nio.file.Path doInBackground() throws Exception {
-                return new UpdateService(UpdateService.currentVersion(), UpdateChecker.REPO, token)
-                        .download(release, kind, msg -> publish(msg));
-            }
-
-            @Override
-            protected void process(List<String> chunks) {
-                chunks.forEach(MainWindow.this::appendLog);
-            }
-
-            @Override
-            protected void done() {
-                setBusy(false);
-                try {
-                    Installers.start(get(), kind);
-                    status.setText("Installer started. Restart PackObfuscator when it finishes.");
-                    JOptionPane.showMessageDialog(MainWindow.this,
-                            "The update to " + release.version() + " is ready. Restart PackObfuscator after it finishes.",
-                            "Update", JOptionPane.INFORMATION_MESSAGE);
-                } catch (Exception e) {
-                    String message = e.getCause() != null && e.getCause().getMessage() != null
-                            ? e.getCause().getMessage() : e.getMessage();
-                    fail(message == null ? e.toString() : message);
-                }
-            }
-        };
-        worker.execute();
-    }
-
-    private void openReleasePage() {
-        if (availableRelease == null) {
-            return;
-        }
-        try {
-            Desktop.getDesktop().browse(java.net.URI.create(availableRelease.pageUrl()));
-        } catch (Exception e) {
-            appendLog("Open this page to download the update: " + availableRelease.pageUrl());
-        }
     }
 
     private JPanel header() {
@@ -391,8 +320,14 @@ public final class MainWindow extends JFrame {
         titles.add(title);
         titles.add(Widgets.muted("Renames models, textures and sounds and rewrites every reference, so a shared pack reveals less."));
         p.add(titles, BorderLayout.WEST);
-        JLabel version = Widgets.muted("v" + versionText());
-        p.add(version, BorderLayout.EAST);
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        right.setOpaque(false);
+        checkUpdatesButton.setFont(Theme.SMALL);
+        checkUpdatesButton.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
+        checkUpdatesButton.addActionListener(e -> checkNow());
+        right.add(checkUpdatesButton);
+        right.add(Widgets.muted("v" + versionText()));
+        p.add(right, BorderLayout.EAST);
         return p;
     }
 

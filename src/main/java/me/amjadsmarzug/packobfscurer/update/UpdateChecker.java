@@ -69,7 +69,8 @@ public final class UpdateChecker {
                 assets.add(new Release.Asset(String.valueOf(a.get("name")), String.valueOf(a.get("url")), size));
             }
         }
-        return new Release(tag, version, String.valueOf(root.get("html_url")), assets);
+        String body = root.get("body") == null ? "" : String.valueOf(root.get("body")).trim();
+        return new Release(tag, version, String.valueOf(root.get("html_url")), body, assets);
     }
 
     /** Downloads an asset to a file. Uses the API URL, so private repos work with a token. */
