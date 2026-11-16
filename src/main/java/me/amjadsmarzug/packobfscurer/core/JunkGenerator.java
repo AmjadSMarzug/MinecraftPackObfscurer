@@ -75,6 +75,13 @@ final class JunkGenerator {
 
     private final List<BufferedImage> realImages;
     private final List<TextureRef> hybrids = new ArrayList<>();
+    /** Paths of textures a draft is using. They stay reserved even if the draft is rejected. */
+    private final Set<String> reserved = new HashSet<>();
+    private int partTextures;
+
+    /** A junk model and the PNGs its parts use. Nothing is written until the draft is accepted. */
+    private record Draft(byte[] model, Map<String, byte[]> textures) {
+    }
 
     private JunkGenerator(Set<AssetKey> owned, Set<String> existing, Random rnd, boolean minify, Optional<Path> ffmpeg,
                           Map<String, byte[]> sourceFiles) {
@@ -131,13 +138,17 @@ final class JunkGenerator {
             }
         }
         for (int i = 0; i < junk.models(); i++) {
-            Placed p = place(pickNamespace(), "models", ".json");
-            // The first models each use one hybrid texture, so every real-looking texture is referenced.
+            String ns = pickNamespace();
+            Placed p = place(ns, "models", ".json");
+            // The first models each use one hybrid texture on their first part, so every real-looking texture is referenced.
             TextureRef anchor = i < hybrids.size() ? hybrids.get(i) : null;
-            out.put("assets/" + p.namespace() + "/models/" + p.relative() + ".json",
-                    unique(() -> modelBytes(anchor)));
+            Draft draft = uniqueDraft(() -> buildDraft(ns, anchor));
+            out.put("assets/" + ns + "/models/" + p.relative() + ".json", draft.model());
+            out.putAll(draft.textures());
+            partTextures += draft.textures().size();
         }
         int sounds = addSounds(junk.sounds());
+        int textureTotal = junk.textures() + partTextures;
 
         addEmptyFolders(Math.max(1, junk.total() / 8));
 
@@ -145,7 +156,7 @@ final class JunkGenerator {
         for (String dir : dirs) {
             out.putIfAbsent(dir, new byte[0]);
         }
-        return new Result(out, junk.models(), junk.textures(), sounds, dirs.size(), warnings);
+        return new Result(out, junk.models(), textureTotal, sounds, dirs.size(), warnings);
     }
 
     private int addSounds(int count) {
@@ -183,7 +194,7 @@ final class JunkGenerator {
             String sub = subs.get(rnd.nextInt(subs.size()));
             String relative = roots.get(ns) + "/" + sub + "/" + hex();
             String path = "assets/" + ns + "/" + typeFolder + "/" + relative + ext;
-            if (!existing.contains(path) && !out.containsKey(path)) {
+            if (!existing.contains(path) && !out.containsKey(path) && !reserved.contains(path)) {
                 addDirs("assets/" + ns + "/" + typeFolder + "/", relative);
                 return new Placed(ns, relative);
             }
@@ -329,37 +340,37 @@ final class JunkGenerator {
     }
 
     /**
-     * A Blockbench-style model with random geometry, faces and display settings. Textured models have
-     * one to three texture slots (layer0, layer1, ...), and each face picks a slot. An anchored model
-     * always uses its anchor texture on its first face.
+     * Every model part (cube) gets its own PNG, so no two parts of a junk model share a texture.
+     * The first part can reuse an anchor texture from the pool, which is how real-pixel textures get referenced.
      */
-    private byte[] modelBytes(TextureRef anchor) {
+    private Draft buildDraft(String ns, TextureRef anchor) {
+        Map<String, byte[]> pngs = new LinkedHashMap<>();
+        List<TextureRef> parts = new ArrayList<>();
+        int partCount = 1 + rnd.nextInt(6);
+        for (int c = 0; c < partCount; c++) {
+            if (c == 0 && anchor != null) {
+                parts.add(anchor);
+                continue;
+            }
+            int size = TEXTURE_SIZES[rnd.nextInt(TEXTURE_SIZES.length)];
+            Placed p = place(ns, "textures", ".png");
+            boolean real = !realImages.isEmpty() && rnd.nextInt(3) == 0;
+            Rect[] region = new Rect[1];
+            byte[] png = real ? pngWithRealPixels(size, region) : png(size);
+            String path = "assets/" + ns + "/textures/" + p.relative() + ".png";
+            pngs.put(path, png);
+            reserved.add(path);
+            parts.add(new TextureRef(ns + ":" + p.relative(), size, real ? region[0] : null));
+        }
+
         Map<String, Object> model = new LinkedHashMap<>();
         model.put("parent", PARENTS[rnd.nextInt(PARENTS.length)]);
         model.put("ambientocclusion", rnd.nextBoolean());
-
-        List<TextureRef> slots = new ArrayList<>();
-        boolean textured = anchor != null || (!textures.isEmpty() && rnd.nextInt(4) != 0);
-        if (textured) {
-            if (anchor != null) {
-                slots.add(anchor);
-            } else {
-                slots.add(textures.get(rnd.nextInt(textures.size())));
-            }
-            int extra = rnd.nextInt(3);
-            for (int k = 0; k < extra; k++) {
-                TextureRef t = textures.get(rnd.nextInt(textures.size()));
-                if (!slots.contains(t)) {
-                    slots.add(t);
-                }
-            }
-            Map<String, Object> texMap = new LinkedHashMap<>();
-            for (int j = 0; j < slots.size(); j++) {
-                texMap.put("layer" + j, slots.get(j).ref());
-            }
-            model.put("textures", texMap);
+        Map<String, Object> texMap = new LinkedHashMap<>();
+        for (int c = 0; c < parts.size(); c++) {
+            texMap.put("layer" + c, parts.get(c).ref());
         }
-        int size = textured ? slots.get(0).size() : 16;
+        model.put("textures", texMap);
 
         Map<String, Object> display = new LinkedHashMap<>();
         Map<String, Object> gui = new LinkedHashMap<>();
@@ -369,15 +380,34 @@ final class JunkGenerator {
         model.put("display", display);
 
         List<Object> elements = new ArrayList<>();
-        int cubes = 1 + rnd.nextInt(6);
-        for (int c = 0; c < cubes; c++) {
-            elements.add(cube(size, slots, anchor != null && c == 0));
+        for (int c = 0; c < parts.size(); c++) {
+            elements.add(cube(c, parts.get(c), anchor != null && c == 0));
         }
         model.put("elements", elements);
-        return PackSource.utf8(Json.write(model, !minify));
+        return new Draft(PackSource.utf8(Json.write(model, !minify)), pngs);
     }
 
-    private Map<String, Object> cube(int size, List<TextureRef> slots, boolean anchored) {
+    /** Draws drafts until one has a model and PNGs nobody else in the junk has. */
+    private Draft uniqueDraft(Supplier<Draft> generator) {
+        Draft draft = null;
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            draft = generator.get();
+            List<String> hashes = new ArrayList<>();
+            hashes.add(sha256(draft.model()));
+            for (byte[] png : draft.textures().values()) {
+                hashes.add(sha256(png));
+            }
+            if (new HashSet<>(hashes).size() == hashes.size() && hashes.stream().noneMatch(seen::contains)) {
+                seen.addAll(hashes);
+                return draft;
+            }
+        }
+        return draft; // practically unreachable
+    }
+
+    /** One cube. Its faces all use this part's own texture, layer{index}. */
+    private Map<String, Object> cube(int index, TextureRef part, boolean anchored) {
+        int size = part.size();
         int x = rnd.nextInt(size);
         int y = rnd.nextInt(size);
         int z = rnd.nextInt(size);
@@ -397,26 +427,19 @@ final class JunkGenerator {
         List<String> chosen = new ArrayList<>(List.of(FACES));
         java.util.Collections.shuffle(chosen, rnd);
         for (int idx = 0; idx < faceCount; idx++) {
-            String face = chosen.get(idx);
             Map<String, Object> f = new LinkedHashMap<>();
             boolean first = anchored && idx == 0;
-            if (slots.isEmpty()) {
-                addRandomUv(f, size);
+            if (part.region() != null && (first || rnd.nextBoolean())) {
+                Rect r = part.region();
+                f.put("uv", List.of(r.x1(), r.y1(), r.x2(), r.y2()));
             } else {
-                int slot = first ? 0 : rnd.nextInt(slots.size());
-                TextureRef t = slots.get(slot);
-                if (t.region() != null && (first || rnd.nextBoolean())) {
-                    Rect r = t.region();
-                    f.put("uv", List.of(r.x1(), r.y1(), r.x2(), r.y2()));
-                } else {
-                    addRandomUv(f, t.size());
-                }
-                f.put("texture", "#layer" + slot);
+                addRandomUv(f, size);
             }
+            f.put("texture", "#layer" + index);
             if (rnd.nextInt(3) == 0) {
                 f.put("rotation", 90 * rnd.nextInt(4));
             }
-            faces.put(face, f);
+            faces.put(chosen.get(idx), f);
         }
         cube.put("faces", faces);
         return cube;

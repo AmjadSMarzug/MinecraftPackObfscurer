@@ -323,9 +323,9 @@ class PackObfuscatorTest {
         added.removeAll(a.keySet());
         List<String> pngs = added.stream().filter(p -> p.endsWith(".png")).toList();
         List<String> models = added.stream().filter(p -> p.contains("/models/")).toList();
-        assertEquals(4, pngs.size());
+        assertTrue(pngs.size() >= 4, "each model part should have its own PNG");
         assertEquals(4, models.size());
-        assertEquals(8, r.junkFiles());
+        assertEquals(added.size(), r.junkFiles(), "every added junk file is counted");
         assertTrue(r.junkFolders() > 0);
         assertTrue(verifyClean(r), r.warnings().toString());
 
@@ -338,11 +338,13 @@ class PackObfuscatorTest {
             Map<?, ?> doc = (Map<?, ?>) Json.parse(text(b, model));
             assertTrue(doc.containsKey("elements"), model);
             if (doc.get("textures") instanceof Map<?, ?> tex) {
-                // a junk model may only point at junk textures
-                String ref = (String) tex.get("layer0");
-                String ns = ref.substring(0, ref.indexOf(':'));
-                String rel = ref.substring(ref.indexOf(':') + 1);
-                assertTrue(added.contains("assets/" + ns + "/textures/" + rel + ".png"), ref);
+                // a junk model may only point at junk textures, one per part
+                for (Object value : tex.values()) {
+                    String ref = (String) value;
+                    String ns = ref.substring(0, ref.indexOf(':'));
+                    String rel = ref.substring(ref.indexOf(':') + 1);
+                    assertTrue(added.contains("assets/" + ns + "/textures/" + rel + ".png"), ref);
+                }
             }
         }
         try (ZipFile zf = new ZipFile(junky.toFile())) {
@@ -366,7 +368,7 @@ class PackObfuscatorTest {
                 assertTrue(models.add(Arrays.toString(e.getValue())), "duplicate model " + e.getKey());
             }
         }
-        assertEquals(60, textures.size());
+        assertTrue(textures.size() >= 60, "at least the pool textures are there: " + textures.size());
         assertEquals(60, models.size());
     }
 
@@ -454,7 +456,8 @@ class PackObfuscatorTest {
         Set<String> expectedKeys = new TreeSet<>(original.keySet());
         expectedKeys.removeIf(PackObfuscator::isJunk);
         assertEquals(expectedKeys, new TreeSet<>(restored.files().keySet()));
-        assertEquals(6, restored.removedJunk());
+        // Every junk model and PNG the run added is removed on restore. The 6 stripped leftovers were never in the output.
+        assertEquals(r.junkFiles(), restored.removedJunk());
         for (String path : expectedKeys) {
             byte[] want = original.get(path);
             byte[] got = restored.files().get(path);
