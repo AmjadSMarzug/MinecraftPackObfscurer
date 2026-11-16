@@ -102,6 +102,7 @@ val portableZip = tasks.register<Zip>("portableZip") {
     destinationDirectory.set(distDir)
     // app-image already contains the PackObfuscator/ folder, so copy it to the zip root.
     from(jpackageOutput.get().dir("app-image"))
+    from(layout.projectDirectory.file("LICENSE"))
     // Keep the executable bit on Linux and macOS launchers.
     filePermissions { unix("rwxr-xr-x") }
     dirPermissions { unix("rwxr-xr-x") }
@@ -119,6 +120,7 @@ fun jpackageArgs(outDir: File, type: List<String>): List<String> =
         "--dest", outDir.absolutePath,
         "--vendor", "PackObfuscator",
         "--description", "Obfuscates Minecraft resource packs",
+        "--license-file", layout.projectDirectory.file("LICENSE").asFile.absolutePath,
         "--java-options", "-Xmx1g",
         "--java-options", "-Dfile.encoding=UTF-8"
     ) + type
@@ -153,4 +155,23 @@ tasks.register("packageAll") {
     description = "Portable archive plus native installers for this OS (includes .rpm on Linux)."
     dependsOn(portableZip, installer)
     dependsOn(rpmInstaller)
+}
+
+// CLI-only build: the jar plus launchers for Linux, macOS and Windows. Needs Java 21 on the PATH.
+// Built once (on Linux in CI), because the jar and scripts are the same on every system.
+val cliZip = tasks.register<Zip>("cliZip") {
+    dependsOn(tasks.jar)
+    group = "distribution"
+    description = "Command-line-only archive: the jar and launchers. Needs Java 21."
+    archiveFileName.set("$appName-$appVersion-cli.zip")
+    destinationDirectory.set(distDir)
+    into("PackObfuscator-cli") {
+        from(tasks.jar.flatMap { it.archiveFile }) {
+            rename { "PackObfuscator.jar" }
+        }
+        from(layout.projectDirectory.dir("packaging/cli"))
+        from(layout.projectDirectory.file("LICENSE"))
+    }
+    filePermissions { unix("rwxr-xr-x") }
+    dirPermissions { unix("rwxr-xr-x") }
 }

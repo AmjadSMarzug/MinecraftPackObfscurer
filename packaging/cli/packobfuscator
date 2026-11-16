@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# PackObfuscator command line. Needs Java 21 or newer on the PATH.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec java -cp "$DIR/PackObfuscator.jar" me.amjadsmarzug.packobfscurer.CliMain "$@"

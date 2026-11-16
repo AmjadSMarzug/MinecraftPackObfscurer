@@ -38,6 +38,12 @@ import java.util.function.UnaryOperator;
  */
 public final class PackObfuscator {
 
+    /** The credit every obfuscated pack carries. It cannot be turned off. */
+    public static final String CREDIT = "Obfuscated by AmjadSMarzug with PackObfuscator";
+    public static final String CREDIT_FILE = "OBFUSCATED_BY.txt";
+    private static final String CREDIT_FILE_TEXT = CREDIT + ".\n"
+            + "The original pack is not included. Ask the author if you need it.\n";
+
     /** Mapping file format version. Version 2 records every moved file and every junk file, so a pack can be restored. */
     public static final int MAPPING_VERSION = 2;
 
@@ -117,6 +123,8 @@ public final class PackObfuscator {
                     + junk.sounds() + " junk sounds, " + junk.folders() + " junk folders");
         }
         warnings.addAll(junk.warnings());
+
+        out.files().put(CREDIT_FILE, PackSource.utf8(CREDIT_FILE_TEXT));
 
         List<String> problems = PackVerifier.verify(out.files());
         for (String p : problems) {
@@ -341,8 +349,11 @@ public final class PackObfuscator {
                 out.put(newPath, binaryContent(path, e.getValue(), opts, ffmpeg, warnings));
                 continue;
             }
-            if (path.equals("pack.mcmeta") && opts.descriptionOverride() != null) {
-                doc = withPackDescription(doc, opts.descriptionOverride());
+            if (path.equals("pack.mcmeta")) {
+                if (opts.descriptionOverride() != null) {
+                    doc = withPackDescription(doc, opts.descriptionOverride());
+                }
+                doc = withCredit(doc);
             }
             boolean isAsset = path.startsWith("assets/");
             if (isAsset) {
@@ -445,6 +456,43 @@ public final class PackObfuscator {
     private static String parentDir(String path) {
         int slash = path.lastIndexOf('/');
         return slash < 0 ? "" : path.substring(0, slash);
+    }
+
+    /**
+     * Adds the credit line to pack.mcmeta's description. The description can be text or a list of text
+     * components, and both are handled. A pack that already has the credit is left as it is.
+     */
+    @SuppressWarnings("unchecked")
+    static Object withCredit(Object doc) {
+        if (!(doc instanceof Map<?, ?> root)) {
+            return doc;
+        }
+        Map<String, Object> rootCopy = new LinkedHashMap<>();
+        root.forEach((k, v) -> rootCopy.put(String.valueOf(k), v));
+        Map<String, Object> packCopy = rootCopy.get("pack") instanceof Map<?, ?> pack
+                ? new LinkedHashMap<>((Map<String, Object>) pack) : new LinkedHashMap<>();
+        Object desc = packCopy.get("description");
+        if (desc != null && Json.write(desc, true).contains(CREDIT)) {
+            return doc;
+        }
+        Object credited;
+        if (desc == null) {
+            credited = CREDIT;
+        } else if (desc instanceof String s) {
+            credited = s.isEmpty() ? CREDIT : s + "\n" + CREDIT;
+        } else {
+            List<Object> parts = new ArrayList<>();
+            if (desc instanceof List<?> list) {
+                parts.addAll(list);
+            } else {
+                parts.add(desc);
+            }
+            parts.add(Map.of("text", "\n" + CREDIT, "color", "gray"));
+            credited = parts;
+        }
+        packCopy.put("description", credited);
+        rootCopy.put("pack", packCopy);
+        return rootCopy;
     }
 
     @SuppressWarnings("unchecked")

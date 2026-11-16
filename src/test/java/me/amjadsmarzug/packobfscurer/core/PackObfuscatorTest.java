@@ -227,7 +227,9 @@ class PackObfuscatorTest {
         PackObfuscator.run(src, out, opts, s -> { });
         SortedMap<String, byte[]> result = readZip(out);
         assertTrue(result.containsKey("assets/minecraft/textures/item/gauntlet.png"));
-        assertTrue(text(result, "pack.mcmeta").contains("\"description\":\"Hello\""));
+        String mcmeta = text(result, "pack.mcmeta");
+        assertTrue(mcmeta.contains("Hello"), mcmeta);
+        assertTrue(mcmeta.contains(PackObfuscator.CREDIT), "the credit is always added");
     }
 
     @Test
@@ -455,11 +457,20 @@ class PackObfuscatorTest {
         SortedMap<String, byte[]> original = samplePack();
         Set<String> expectedKeys = new TreeSet<>(original.keySet());
         expectedKeys.removeIf(PackObfuscator::isJunk);
+        // The credit file is added by every obfuscation and is kept on restore.
+        expectedKeys.add(PackObfuscator.CREDIT_FILE);
         assertEquals(expectedKeys, new TreeSet<>(restored.files().keySet()));
         // Every junk model and PNG the run added is removed on restore. The 6 stripped leftovers were never in the output.
         assertEquals(r.junkFiles(), restored.removedJunk());
         for (String path : expectedKeys) {
+            if (path.equals(PackObfuscator.CREDIT_FILE)) {
+                continue;
+            }
             byte[] want = original.get(path);
+            if (path.equals("pack.mcmeta")) {
+                // The credit is added to the description on obfuscation and is not removed by restore.
+                continue;
+            }
             byte[] got = restored.files().get(path);
             if (path.endsWith(".json") || path.endsWith(".mcmeta")) {
                 assertEquals(Json.parse(new String(want, StandardCharsets.UTF_8)),

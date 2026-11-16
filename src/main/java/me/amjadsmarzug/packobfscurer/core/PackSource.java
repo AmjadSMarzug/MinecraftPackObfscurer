@@ -95,6 +95,7 @@ public final class PackSource {
         long fixed = ZonedDateTime.of(1980, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli();
         try (OutputStream os = Files.newOutputStream(tmp);
              ZipOutputStream zos = new ZipOutputStream(os)) {
+            zos.setComment(PackObfuscator.CREDIT);
             for (String name : order) {
                 ZipEntry entry = new ZipEntry(name);
                 if (fixedTimes) {

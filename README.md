@@ -108,6 +108,14 @@ Command line: `PackObfuscator --check-update`, and `PackObfuscator --update` to 
 While the repository is private, the check needs a GitHub token that can read it, in the
 `PACKOBF_UPDATE_TOKEN` environment variable. Without it, the check reports that no release was found.
 
+## Credit and license
+
+Every pack this tool makes carries the credit **"Obfuscated by AmjadSMarzug with PackObfuscator"**: in the
+pack's description, in an `OBFUSCATED_BY.txt` file, and in the zip comment. The credit is always added and
+cannot be turned off. Restoring a pack keeps the credit.
+
+PackObfuscator is proprietary, with all rights reserved. See [LICENSE](LICENSE).
+
 ## Downloads
 
 Each tagged release (`v1.2.3`) publishes:
@@ -119,6 +127,13 @@ Each tagged release (`v1.2.3`) publishes:
 | `PackObfuscator-<ver>-linux-portable.zip` | Linux, no install. Unzip and run `PackObfuscator/bin/PackObfuscator` |
 | `*.exe`, `*.dmg`, `*.deb` | Native installers |
 | `SHA256SUMS.txt` | Checksums to verify the downloads |
+
+Each tag `vX.Y.Z` publishes two releases:
+
+- **`vX.Y.Z`**: the desktop app (the table above), with the CLI inside the portable archives.
+- **`vX.Y.Z-cli`**: the command-line-only zip, `PackObfuscator-X.Y.Z-cli.zip`. It contains the jar and launchers
+  for Linux, macOS and Windows (`packobfuscator` and `packobfuscator.cmd`). It needs Java 21 or newer on the PATH.
+  Run it with no arguments to see the usage.
 
 The portable builds include their own Java runtime, so Java does not need to be installed.
 

@@ -75,6 +75,15 @@ public final class Main {
               --no-junk                no decoy files
             """;
 
+    /** Runs the command line with the given arguments and returns the exit code. Used by the CLI-only launcher. */
+    public static int cli(String[] args) {
+        if (args.length == 0) {
+            System.out.println(USAGE);
+            return 2;
+        }
+        return runCli(args);
+    }
+
     static int runCli(String[] args) {
         try {
             return dispatch(args);
