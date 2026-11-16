@@ -63,6 +63,8 @@ public final class Main {
               --no-minify              keep JSON formatted
               --keep-junk              do not remove editor, git and OS leftovers
               --keep-metadata          do not strip credits, PNG/Vorbis metadata, or shuffle order
+              --split-textures         give every model part its own PNG (default: on in Standard and Max)
+              --keep-textures          keep models using their original textures
               --no-mapping             do not write the name map
               --seed N                 reproducible names
               --description TEXT       replace the pack description
@@ -121,6 +123,8 @@ public final class Main {
                 case "--no-minify" -> b.minifyJson(false);
                 case "--keep-junk" -> b.stripJunk(false);
                 case "--keep-metadata" -> b.stripMetadata(false);
+                case "--split-textures" -> b.splitTextures(true);
+                case "--keep-textures" -> b.splitTextures(false);
                 case "--no-mapping" -> b.writeMapping(false);
                 case "--seed" -> b.seed(Long.parseLong(args.get(i++)));
                 case "--description" -> b.descriptionOverride(args.get(i++));

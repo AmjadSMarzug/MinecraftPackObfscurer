@@ -13,6 +13,8 @@ import java.util.List;
  * @param removeGroups      delete the "groups" tree from models (editor-only data)
  * @param minifyJson        write every JSON file without whitespace
  * @param stripJunk         drop editor, git and OS leftovers (.psd, .DS_Store, .git and so on)
+ * @param splitTextures    give every part of a real model its own PNG, keeping only the pixels its faces use
+ *                          and filling the rest with junk. Models the splitter cannot prove safe are left alone.
  * @param stripMetadata     remove author credits, PNG text chunks and Vorbis tags, fix zip dates,
  *                          and shuffle zip entry order and JSON key order
  * @param writeMapping      save an old-to-new name map next to the output (needed to undo or debug)
@@ -31,6 +33,7 @@ public record PackOptions(
         boolean removeGroups,
         boolean minifyJson,
         boolean stripJunk,
+        boolean splitTextures,
         boolean stripMetadata,
         boolean writeMapping,
         Long seed,
@@ -43,7 +46,7 @@ public record PackOptions(
     public enum Preset {
         /** Renames models, textures and sounds, minifies, strips junk. No model cleanup, no decoys. */
         LIGHT,
-        /** Light, plus cube and group cleanup and a moderate amount of junk. The default. */
+        /** Light, plus cube and group cleanup, per-part texture splitting and a moderate amount of junk. The default. */
         STANDARD,
         /** Everything: namespaces are renamed and there is a lot of junk. */
         MAX;
@@ -118,11 +121,11 @@ public record PackOptions(
         return switch (preset) {
             case LIGHT -> new Builder().build();
             case STANDARD -> new Builder()
-                    .renameCubes(true).removeGroups(true)
+                    .renameCubes(true).removeGroups(true).splitTextures(true)
                     .junk(new Junk(25, 25, 5)).build();
             case MAX -> new Builder()
                     .renameNamespaces(true)
-                    .renameCubes(true).removeGroups(true)
+                    .renameCubes(true).removeGroups(true).splitTextures(true)
                     .junk(new Junk(60, 60, 12)).build();
         };
     }
@@ -141,6 +144,7 @@ public record PackOptions(
         private boolean removeGroups = false;
         private boolean minifyJson = true;
         private boolean stripJunk = true;
+        private boolean splitTextures = false;
         private boolean stripMetadata = true;
         private boolean writeMapping = true;
         private Long seed;
@@ -161,6 +165,7 @@ public record PackOptions(
             removeGroups = o.removeGroups();
             minifyJson = o.minifyJson();
             stripJunk = o.stripJunk();
+            splitTextures = o.splitTextures();
             stripMetadata = o.stripMetadata();
             writeMapping = o.writeMapping();
             seed = o.seed();
@@ -177,6 +182,7 @@ public record PackOptions(
         public Builder removeGroups(boolean v) { removeGroups = v; return this; }
         public Builder minifyJson(boolean v) { minifyJson = v; return this; }
         public Builder stripJunk(boolean v) { stripJunk = v; return this; }
+        public Builder splitTextures(boolean v) { splitTextures = v; return this; }
         public Builder stripMetadata(boolean v) { stripMetadata = v; return this; }
         public Builder writeMapping(boolean v) { writeMapping = v; return this; }
         public Builder seed(Long v) { seed = v; return this; }
@@ -186,7 +192,7 @@ public record PackOptions(
 
         public PackOptions build() {
             return new PackOptions(renameModels, renameTextures, renameSounds, renameNamespaces,
-                    renameCubes, removeGroups, minifyJson, stripJunk, stripMetadata, writeMapping,
+                    renameCubes, removeGroups, minifyJson, stripJunk, splitTextures, stripMetadata, writeMapping,
                     seed, protectedPrefixes, descriptionOverride, junk);
         }
     }

@@ -25,6 +25,7 @@ public final class PackRestorer {
     /** Notes listed to the user after every restore. */
     public static final List<String> NOT_RESTORED = List.of(
             "cube and group names (they were replaced, not recorded)",
+            "per-part texture splits (the original textures were replaced, not kept)",
             "deleted groups",
             "removed author credits",
             "removed PNG and Vorbis metadata",

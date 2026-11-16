@@ -577,4 +577,69 @@ class PackObfuscatorTest {
         }
         assertTrue(multiSlot > 0, "some junk models should use more than one texture slot");
     }
+
+    private static byte[] gradientPng() throws IOException {
+        BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 16; x++) {
+                img.setRGB(x, y, 0xFF000000 | (x * 16) << 16 | (y * 16) << 8 | ((x * 7 + y * 3) & 0xFF));
+            }
+        }
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        ImageIO.write(img, "png", bos);
+        return bos.toByteArray();
+    }
+
+    @Test
+    void splitterGivesEachPartItsOwnPngWithTheSamePixelsForItsFaces() throws Exception {
+        SortedMap<String, byte[]> files = new TreeMap<>();
+        put(files, "pack.mcmeta", "{\"pack\":{\"pack_format\":46,\"description\":\"x\"}}");
+        put(files, "assets/abc/models/item/m.json",
+                "{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"abc:item/t\"},"
+                + "\"elements\":["
+                + "{\"from\":[0,0,0],\"to\":[16,16,16],\"faces\":{"
+                + "\"north\":{\"uv\":[0,0,8,8],\"texture\":\"#layer0\"},"
+                + "\"south\":{\"uv\":[8,0,16,8],\"texture\":\"#layer0\"}}},"
+                + "{\"from\":[1,1,1],\"to\":[15,15,15],\"faces\":{"
+                + "\"up\":{\"uv\":[0,8,8,16],\"texture\":\"#layer0\"}}}]}");
+        putBytes(files, "assets/abc/textures/item/t.png", gradientPng());
+        putBytes(files, "assets/abc/textures/item/u.png", gradientPng());
+        put(files, "assets/abc/atlases/blocks.json", "{\"sources\":[{\"type\":\"single\",\"resource\":\"abc:item/u\"}]}");
+
+        SortedMap<String, byte[]> before = new TreeMap<>(files);
+        TextureSplitter.Result r = TextureSplitter.split(files, new Random(1), true);
+        assertEquals(1, r.splitModels());
+        assertEquals(2, r.newTextures(), "one PNG per part");
+        assertEquals(1, r.removedTextures(), "the original is gone");
+        assertFalse(files.containsKey("assets/abc/textures/item/t.png"));
+        assertTrue(files.containsKey("assets/abc/textures/item/u.png"), "a texture used by an atlas must stay");
+
+        Map<?, ?> model = (Map<?, ?>) Json.parse(text(files, "assets/abc/models/item/m.json"));
+        Map<?, ?> textures = (Map<?, ?>) model.get("textures");
+        List<?> elements = (List<?>) model.get("elements");
+        BufferedImage original = ImageIO.read(new ByteArrayInputStream(before.get("assets/abc/textures/item/t.png")));
+        for (Object o : elements) {
+            Map<?, ?> element = (Map<?, ?>) o;
+            Map<?, ?> faces = (Map<?, ?>) element.get("faces");
+            for (Object fo : faces.values()) {
+                Map<?, ?> face = (Map<?, ?>) fo;
+                String key = ((String) face.get("texture")).substring(1);
+                String ref = (String) textures.get(key);
+                BufferedImage split = ImageIO.read(new ByteArrayInputStream(
+                        files.get("assets/" + ref.substring(0, ref.indexOf(':')) + "/textures/"
+                                + ref.substring(ref.indexOf(':') + 1) + ".png")));
+                List<?> uv = (List<?>) face.get("uv");
+                int x1 = Integer.parseInt(((Json.Raw) uv.get(0)).text());
+                int y1 = Integer.parseInt(((Json.Raw) uv.get(1)).text());
+                int x2 = Integer.parseInt(((Json.Raw) uv.get(2)).text());
+                int y2 = Integer.parseInt(((Json.Raw) uv.get(3)).text());
+                for (int y = y1; y < y2; y++) {
+                    for (int x = x1; x < x2; x++) {
+                        assertEquals(original.getRGB(x, y), split.getRGB(x, y), "pixel differs at " + x + "," + y);
+                    }
+                }
+            }
+        }
+        assertTrue(PackVerifier.verify(files).isEmpty(), PackVerifier.verify(files).toString());
+    }
 }

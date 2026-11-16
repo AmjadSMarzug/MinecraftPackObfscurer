@@ -97,6 +97,13 @@ public final class PackObfuscator {
                     + out.groupsRemoved() + " groups removed");
         }
 
+        if (opts.splitTextures()) {
+            TextureSplitter.Result split = TextureSplitter.split(out.files(), rnd, opts.minifyJson());
+            say.accept("Split " + split.splitModels() + " model(s) into per-part textures: "
+                    + split.newTextures() + " new PNG(s), " + split.removedTextures() + " original(s) removed, "
+                    + split.skippedModels() + " model(s) left alone");
+        }
+
         Set<AssetKey> junkOwned = new HashSet<>();
         for (AssetKey k : owned) {
             junkOwned.add(new AssetKey(k.type(), nsMap.getOrDefault(k.namespace(), k.namespace()), k.path()));

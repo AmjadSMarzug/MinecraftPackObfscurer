@@ -74,6 +74,7 @@ public final class MainWindow extends JFrame {
     private final JCheckBox minifyJson = new JCheckBox("Minify JSON");
     private final JCheckBox stripJunk = new JCheckBox("Strip junk files");
     private final JCheckBox stripMetadata = new JCheckBox("Strip metadata");
+    private final JCheckBox splitTextures = new JCheckBox("Split model textures");
     private final JComboBox<String> presetBox = new JComboBox<>(presetLabels());
     private boolean applyingPreset;
     private final JButton batchButton = new Widgets.Button("Batch folder...", false);
@@ -300,6 +301,7 @@ public final class MainWindow extends JFrame {
         checks.add(removeGroups);
         checks.add(minifyJson);
         checks.add(stripJunk);
+        checks.add(splitTextures);
         checks.add(stripMetadata);
         checks.add(writeMapping);
         form.add(checks, BorderLayout.NORTH);
@@ -647,7 +649,7 @@ public final class MainWindow extends JFrame {
 
     private List<JCheckBox> allCheckBoxes() {
         return List.of(renameModels, renameTextures, renameSounds, renameNamespaces, renameCubes,
-                removeGroups, minifyJson, stripJunk, stripMetadata, writeMapping);
+                removeGroups, minifyJson, stripJunk, splitTextures, stripMetadata, writeMapping);
     }
 
     /** Sets every option from a preset. Changing an option by hand afterwards switches the preset to Custom. */
@@ -664,6 +666,7 @@ public final class MainWindow extends JFrame {
             minifyJson.setSelected(o.minifyJson());
             stripJunk.setSelected(o.stripJunk());
             stripMetadata.setSelected(o.stripMetadata());
+            splitTextures.setSelected(o.splitTextures());
             writeMapping.setSelected(o.writeMapping());
             junkModels.setValue(o.junk().models());
             junkTextures.setValue(o.junk().textures());
@@ -696,6 +699,7 @@ public final class MainWindow extends JFrame {
                 .removeGroups(removeGroups.isSelected())
                 .minifyJson(minifyJson.isSelected())
                 .stripJunk(stripJunk.isSelected())
+                .splitTextures(splitTextures.isSelected())
                 .stripMetadata(stripMetadata.isSelected())
                 .writeMapping(writeMapping.isSelected())
                 .seed(seed)

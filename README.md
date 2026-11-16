@@ -50,16 +50,18 @@ Exit code is 0 on success, 1 on failure, 2 for bad usage.
 5. **Rewrites references** in models (`parent`, `textures`), item definitions (`model`), font providers (`file`), atlases (`resource`), particles, and `sounds.json`. Only references to files the pack contains are changed.
 6. **Cleans models** (Standard and Max): replaces cube (element) names and group labels with random names, and deletes the `groups` tree. Cube geometry is unchanged.
 7. **Strips metadata** (on by default): removes Blockbench `credit` fields, re-encodes PNGs without text chunks (the pixels are unchanged), removes Vorbis tags from sounds by stream copy (no re-encoding; needs ffmpeg), gives every zip entry the same timestamp, and shuffles zip entry order and JSON key order. Array order is never changed.
-8. **Minifies** the JSON, unless turned off.
-9. **Adds junk** (like junk classes in a Java obfuscator): decoy models, PNG textures, Ogg Vorbis sounds and empty folders that the game never loads. Every part of a junk model (each cube) has its own junk PNG, so no two parts of a model share a texture. About a third of those PNGs copy one real rectangle from the pack, so only that part looks like the pack's art. Every decoy is unique: textures get random patterns and palettes, models get random geometry, and sounds get their own pitch, length and envelope. Each file's content is hashed, so no two decoys match. Junk only points at other junk, and real files are byte-identical with junk on or off.
-10. **Verifies** the result: invalid JSON, undecodable PNGs, non-Ogg sounds, and references to pack files that are missing. Problems are listed in the log and in the warnings.
-11. **Saves a name map** (`<name>-obfuscated.mapping.json`). Keep it private: it is the key to the pack.
+8. **Splits model textures** (Standard and Max, or `--split-textures`): every part (cube) of a real model gets its own PNG. The new PNG has the same size as the original, keeps only the pixels that part's faces sample, and fills every other pixel with junk noise. The rendered model is unchanged. This is checked against the original pixels for every face. Models the splitter cannot prove safe are left as they were: a model with a parent in the pack, a model used as another's parent, a face without UVs, a model without `texture_size` unless its texture is 16x16, or a texture also used by an atlas, font or particle, or one with animation metadata. The original texture is removed once nothing refers to it.
+9. **Minifies** the JSON, unless turned off.
+10. **Adds junk** (like junk classes in a Java obfuscator): decoy models, PNG textures, Ogg Vorbis sounds and empty folders that the game never loads. Every part of a junk model (each cube) has its own junk PNG, so no two parts of a model share a texture. About a third of those PNGs copy one real rectangle from the pack, so only that part looks like the pack's art. Every decoy is unique: textures get random patterns and palettes, models get random geometry, and sounds get their own pitch, length and envelope. Each file's content is hashed, so no two decoys match. Junk only points at other junk, and real files are byte-identical with junk on or off.
+11. **Verifies** the result: invalid JSON, undecodable PNGs, non-Ogg sounds, and references to pack files that are missing. Problems are listed in the log and in the warnings.
+12. **Saves a name map** (`<name>-obfuscated.mapping.json`). Keep it private: it is the key to the pack.
 
 ## Restoring a pack
 
 `--restore` uses the version 2 mapping to undo the obfuscation: asset names, namespace names, every reference, and the junk files. It cannot restore everything, because the mapping does not record it:
 
 - cube and group names, and deleted groups
+- per-part texture splits (the original textures are replaced, not kept)
 - removed credits and PNG/Vorbis metadata
 - minified formatting (the output is pretty-printed)
 - the pack description override
