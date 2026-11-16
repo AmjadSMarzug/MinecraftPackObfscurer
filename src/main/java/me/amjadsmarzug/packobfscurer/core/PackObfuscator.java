@@ -102,7 +102,7 @@ public final class PackObfuscator {
             junkOwned.add(new AssetKey(k.type(), nsMap.getOrDefault(k.namespace(), k.namespace()), k.path()));
         }
         JunkGenerator.Result junk = JunkGenerator.generate(opts.junk(), junkOwned,
-                new HashSet<>(out.files().keySet()), rnd, opts.minifyJson(), VorbisEncoder.locate());
+                new HashSet<>(out.files().keySet()), rnd, opts.minifyJson(), VorbisEncoder.locate(), files);
         out.files().putAll(junk.files());
         int junkFiles = junk.models() + junk.textures() + junk.sounds();
         if (opts.junk().total() > 0) {

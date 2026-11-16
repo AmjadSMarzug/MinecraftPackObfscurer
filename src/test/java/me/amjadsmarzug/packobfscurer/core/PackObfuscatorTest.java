@@ -356,7 +356,7 @@ class PackObfuscatorTest {
         Random rnd = new Random(1);
         JunkGenerator.Result r = JunkGenerator.generate(new PackOptions.Junk(60, 60, 0),
                 Set.of(new AssetKey(AssetKey.Type.TEXTURE, "ritualvfx", "item/orb")),
-                Set.of(), rnd, true, Optional.empty());
+                Set.of(), rnd, true, Optional.empty(), java.util.Map.of());
         Set<String> textures = new HashSet<>();
         Set<String> models = new HashSet<>();
         for (Map.Entry<String, byte[]> e : r.files().entrySet()) {
@@ -373,7 +373,7 @@ class PackObfuscatorTest {
     @Test
     void junkSoundsAreSkippedWithAWarningWithoutFfmpeg() {
         JunkGenerator.Result r = JunkGenerator.generate(new PackOptions.Junk(0, 0, 3),
-                Set.of(), Set.of(), new Random(2), true, Optional.empty());
+                Set.of(), Set.of(), new Random(2), true, Optional.empty(), java.util.Map.of());
         assertEquals(0, r.sounds());
         assertTrue(r.files().keySet().stream().noneMatch(k -> k.endsWith(".ogg")));
         assertTrue(r.warnings().get(0).contains("ffmpeg"), r.warnings().toString());
@@ -385,7 +385,7 @@ class PackObfuscatorTest {
         assumeTrue(ffmpeg.isPresent(), "ffmpeg is not installed, so junk sound encoding is not tested");
         JunkGenerator.Result r = JunkGenerator.generate(new PackOptions.Junk(0, 0, 5),
                 Set.of(new AssetKey(AssetKey.Type.SOUND, "ritualvfx", "fx/boom")),
-                Set.of(), new Random(3), true, ffmpeg);
+                Set.of(), new Random(3), true, ffmpeg, java.util.Map.of());
         assertEquals(5, r.sounds());
         List<byte[]> oggs = r.files().entrySet().stream()
                 .filter(e -> e.getKey().endsWith(".ogg")).map(Map.Entry::getValue).toList();
@@ -527,5 +527,51 @@ class PackObfuscatorTest {
         assertEquals(1, items.stream().filter(i -> i.error() != null).count());
         assertTrue(Files.exists(dir.resolve("obfuscated/GoodOne-obfuscated.zip")));
         assertTrue(Files.exists(dir.resolve("obfuscated/GoodTwo-obfuscated.zip")));
+    }
+
+    @Test
+    void someJunkTexturesCarryRealPixelsAndModelsUseSeveralTextures() throws Exception {
+        java.awt.image.BufferedImage red = new java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 16; x++) {
+                red.setRGB(x, y, 0xFFFF0000);
+            }
+        }
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        ImageIO.write(red, "png", bos);
+        SortedMap<String, byte[]> source = new TreeMap<>();
+        source.put("assets/abc/textures/item/red.png", bos.toByteArray());
+
+        JunkGenerator.Result r = JunkGenerator.generate(new PackOptions.Junk(12, 24, 0),
+                Set.of(), Set.of(), new Random(9), true, Optional.empty(), source);
+
+        int withRealPixels = 0;
+        for (Map.Entry<String, byte[]> e : r.files().entrySet()) {
+            if (!e.getKey().endsWith(".png")) {
+                continue;
+            }
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(e.getValue()));
+            int pureRed = 0;
+            for (int y = 0; y < img.getHeight(); y++) {
+                for (int x = 0; x < img.getWidth(); x++) {
+                    if (img.getRGB(x, y) == 0xFFFF0000) {
+                        pureRed++;
+                    }
+                }
+            }
+            if (pureRed >= 16) {
+                withRealPixels++;
+            }
+        }
+        assertTrue(withRealPixels > 0, "some junk textures should carry the copied real pixels");
+
+        int multiSlot = 0;
+        for (Map.Entry<String, byte[]> e : r.files().entrySet()) {
+            if (e.getKey().contains("/models/") && !e.getKey().endsWith("/")
+                    && new String(e.getValue(), StandardCharsets.UTF_8).contains("\"layer1\"")) {
+                multiSlot++;
+            }
+        }
+        assertTrue(multiSlot > 0, "some junk models should use more than one texture slot");
     }
 }

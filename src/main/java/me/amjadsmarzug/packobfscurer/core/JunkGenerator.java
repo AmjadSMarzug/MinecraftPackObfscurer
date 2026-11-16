@@ -41,6 +41,7 @@ final class JunkGenerator {
     private static final int[] TEXTURE_SIZES = {16, 32};
     private static final int SUBFOLDERS_PER_NAMESPACE = 4;
     private static final int MAX_ATTEMPTS = 200;
+    private static final int MAX_REAL_TEXTURES = 256;
     private static final String[] PARENTS = {"minecraft:item/generated", "minecraft:item/handheld"};
     private static final String[] FACES = {"north", "south", "east", "west", "up", "down"};
 
@@ -49,7 +50,11 @@ final class JunkGenerator {
     }
 
     /** A junk texture other junk models may point at. */
-    private record TextureRef(String ref, int size) {
+    private record TextureRef(String ref, int size, Rect region) {
+    }
+
+    /** A rectangle in texture pixels: x1, y1 inclusive, x2, y2 exclusive. */
+    private record Rect(int x1, int y1, int x2, int y2) {
     }
 
     record Result(SortedMap<String, byte[]> files, int models, int textures, int sounds, int folders, List<String> warnings) {
@@ -68,7 +73,12 @@ final class JunkGenerator {
     private final Set<String> seen = new HashSet<>();
     private final List<String> warnings = new ArrayList<>();
 
-    private JunkGenerator(Set<AssetKey> owned, Set<String> existing, Random rnd, boolean minify, Optional<Path> ffmpeg) {
+    private final List<BufferedImage> realImages;
+    private final List<TextureRef> hybrids = new ArrayList<>();
+
+    private JunkGenerator(Set<AssetKey> owned, Set<String> existing, Random rnd, boolean minify, Optional<Path> ffmpeg,
+                          Map<String, byte[]> sourceFiles) {
+        this.realImages = decodeRealTextures(sourceFiles);
         this.rnd = rnd;
         this.existing = existing;
         this.minify = minify;
@@ -80,9 +90,13 @@ final class JunkGenerator {
      * @param existing every path already in the output, so junk never overwrites a real file
      * @param ffmpeg   the encoder for junk sounds, or empty if ffmpeg is not installed
      */
+    /**
+     * @param sourceFiles the pack's own files. Some junk textures copy real pixels from these, so that
+     *                    part of a junk texture looks like the pack's art. Pass an empty map to skip that.
+     */
     static Result generate(PackOptions.Junk junk, Set<AssetKey> owned, Set<String> existing,
-                           Random rnd, boolean minify, Optional<Path> ffmpeg) {
-        return new JunkGenerator(owned, existing, rnd, minify, ffmpeg).run(junk);
+                           Random rnd, boolean minify, Optional<Path> ffmpeg, Map<String, byte[]> sourceFiles) {
+        return new JunkGenerator(owned, existing, rnd, minify, ffmpeg, sourceFiles).run(junk);
     }
 
     private Result run(PackOptions.Junk junk) {
@@ -105,14 +119,23 @@ final class JunkGenerator {
         for (int i = 0; i < junk.textures(); i++) {
             int size = TEXTURE_SIZES[rnd.nextInt(TEXTURE_SIZES.length)];
             Placed p = place(pickNamespace(), "textures", ".png");
-            out.put("assets/" + p.namespace() + "/textures/" + p.relative() + ".png",
-                    unique(() -> png(size)));
-            textures.add(new TextureRef(p.namespace() + ":" + p.relative(), size));
+            // Roughly a third of the textures carry a real rectangle from the pack.
+            boolean hybrid = !realImages.isEmpty() && rnd.nextInt(3) == 0;
+            Rect[] region = new Rect[1];
+            byte[] content = unique(() -> hybrid ? pngWithRealPixels(size, region) : png(size));
+            out.put("assets/" + p.namespace() + "/textures/" + p.relative() + ".png", content);
+            TextureRef ref = new TextureRef(p.namespace() + ":" + p.relative(), size, hybrid ? region[0] : null);
+            textures.add(ref);
+            if (hybrid) {
+                hybrids.add(ref);
+            }
         }
         for (int i = 0; i < junk.models(); i++) {
             Placed p = place(pickNamespace(), "models", ".json");
+            // The first models each use one hybrid texture, so every real-looking texture is referenced.
+            TextureRef anchor = i < hybrids.size() ? hybrids.get(i) : null;
             out.put("assets/" + p.namespace() + "/models/" + p.relative() + ".json",
-                    unique(this::modelBytes));
+                    unique(() -> modelBytes(anchor)));
         }
         int sounds = addSounds(junk.sounds());
 
@@ -218,7 +241,34 @@ final class JunkGenerator {
      * A random texture: one of several patterns, with its own palette. Some palette entries are
      * transparent, like real item sprites.
      */
+    /** A random texture: one of several patterns, with its own palette. */
     private byte[] png(int size) {
+        return encode(noiseImage(size));
+    }
+
+    /**
+     * Noise, with one rectangle copied from a real pack texture. The copied pixels are the real ones,
+     * so only that part looks like the pack's art. The rectangle is written to out[0].
+     */
+    private byte[] pngWithRealPixels(int size, Rect[] out) {
+        BufferedImage img = noiseImage(size);
+        BufferedImage real = realImages.get(rnd.nextInt(realImages.size()));
+        int w = Math.min(Math.min(real.getWidth(), size), 4 + rnd.nextInt(Math.max(1, size / 2)));
+        int h = Math.min(Math.min(real.getHeight(), size), 4 + rnd.nextInt(Math.max(1, size / 2)));
+        int sx = rnd.nextInt(real.getWidth() - w + 1);
+        int sy = rnd.nextInt(real.getHeight() - h + 1);
+        int dx = rnd.nextInt(size - w + 1);
+        int dy = rnd.nextInt(size - h + 1);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                img.setRGB(dx + x, dy + y, real.getRGB(sx + x, sy + y));
+            }
+        }
+        out[0] = new Rect(dx, dy, dx + w, dy + h);
+        return encode(img);
+    }
+
+    private BufferedImage noiseImage(int size) {
         int colours = 2 + rnd.nextInt(4);
         int[] palette = new int[colours];
         for (int i = 0; i < colours; i++) {
@@ -244,6 +294,10 @@ final class JunkGenerator {
                 img.setRGB(x, y, palette[index]);
             }
         }
+        return img;
+    }
+
+    private static byte[] encode(BufferedImage img) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
             ImageIO.write(img, "png", bos);
             return bos.toByteArray();
@@ -252,19 +306,60 @@ final class JunkGenerator {
         }
     }
 
-    /** A Blockbench-style model with random geometry, faces and display settings. */
-    private byte[] modelBytes() {
+    /** Decodes up to MAX_REAL_TEXTURES of the pack's own PNGs that are big enough to copy from. */
+    private static List<BufferedImage> decodeRealTextures(Map<String, byte[]> files) {
+        List<BufferedImage> out = new ArrayList<>();
+        for (Map.Entry<String, byte[]> e : files.entrySet()) {
+            if (out.size() >= MAX_REAL_TEXTURES) {
+                break;
+            }
+            if (!e.getKey().startsWith("assets/") || !e.getKey().endsWith(".png")) {
+                continue;
+            }
+            try {
+                BufferedImage img = ImageIO.read(new java.io.ByteArrayInputStream(e.getValue()));
+                if (img != null && img.getWidth() >= 4 && img.getHeight() >= 4) {
+                    out.add(img);
+                }
+            } catch (IOException ignored) {
+                // A texture that cannot be decoded is simply not used as a source.
+            }
+        }
+        return out;
+    }
+
+    /**
+     * A Blockbench-style model with random geometry, faces and display settings. Textured models have
+     * one to three texture slots (layer0, layer1, ...), and each face picks a slot. An anchored model
+     * always uses its anchor texture on its first face.
+     */
+    private byte[] modelBytes(TextureRef anchor) {
         Map<String, Object> model = new LinkedHashMap<>();
         model.put("parent", PARENTS[rnd.nextInt(PARENTS.length)]);
         model.put("ambientocclusion", rnd.nextBoolean());
 
-        TextureRef tex = textures.isEmpty() || rnd.nextInt(4) == 0 ? null : textures.get(rnd.nextInt(textures.size()));
-        if (tex != null) {
+        List<TextureRef> slots = new ArrayList<>();
+        boolean textured = anchor != null || (!textures.isEmpty() && rnd.nextInt(4) != 0);
+        if (textured) {
+            if (anchor != null) {
+                slots.add(anchor);
+            } else {
+                slots.add(textures.get(rnd.nextInt(textures.size())));
+            }
+            int extra = rnd.nextInt(3);
+            for (int k = 0; k < extra; k++) {
+                TextureRef t = textures.get(rnd.nextInt(textures.size()));
+                if (!slots.contains(t)) {
+                    slots.add(t);
+                }
+            }
             Map<String, Object> texMap = new LinkedHashMap<>();
-            texMap.put("layer0", tex.ref());
+            for (int j = 0; j < slots.size(); j++) {
+                texMap.put("layer" + j, slots.get(j).ref());
+            }
             model.put("textures", texMap);
         }
-        int size = tex == null ? 16 : tex.size();
+        int size = textured ? slots.get(0).size() : 16;
 
         Map<String, Object> display = new LinkedHashMap<>();
         Map<String, Object> gui = new LinkedHashMap<>();
@@ -276,13 +371,13 @@ final class JunkGenerator {
         List<Object> elements = new ArrayList<>();
         int cubes = 1 + rnd.nextInt(6);
         for (int c = 0; c < cubes; c++) {
-            elements.add(cube(size, tex != null));
+            elements.add(cube(size, slots, anchor != null && c == 0));
         }
         model.put("elements", elements);
         return PackSource.utf8(Json.write(model, !minify));
     }
 
-    private Map<String, Object> cube(int size, boolean textured) {
+    private Map<String, Object> cube(int size, List<TextureRef> slots, boolean anchored) {
         int x = rnd.nextInt(size);
         int y = rnd.nextInt(size);
         int z = rnd.nextInt(size);
@@ -301,13 +396,22 @@ final class JunkGenerator {
         int faceCount = 2 + rnd.nextInt(FACES.length - 1);
         List<String> chosen = new ArrayList<>(List.of(FACES));
         java.util.Collections.shuffle(chosen, rnd);
-        for (String face : chosen.subList(0, faceCount)) {
+        for (int idx = 0; idx < faceCount; idx++) {
+            String face = chosen.get(idx);
             Map<String, Object> f = new LinkedHashMap<>();
-            int u1 = rnd.nextInt(size);
-            int v1 = rnd.nextInt(size);
-            f.put("uv", List.of(u1, v1, u1 + 1 + rnd.nextInt(size - u1), v1 + 1 + rnd.nextInt(size - v1)));
-            if (textured) {
-                f.put("texture", "#layer0");
+            boolean first = anchored && idx == 0;
+            if (slots.isEmpty()) {
+                addRandomUv(f, size);
+            } else {
+                int slot = first ? 0 : rnd.nextInt(slots.size());
+                TextureRef t = slots.get(slot);
+                if (t.region() != null && (first || rnd.nextBoolean())) {
+                    Rect r = t.region();
+                    f.put("uv", List.of(r.x1(), r.y1(), r.x2(), r.y2()));
+                } else {
+                    addRandomUv(f, t.size());
+                }
+                f.put("texture", "#layer" + slot);
             }
             if (rnd.nextInt(3) == 0) {
                 f.put("rotation", 90 * rnd.nextInt(4));
@@ -316,6 +420,12 @@ final class JunkGenerator {
         }
         cube.put("faces", faces);
         return cube;
+    }
+
+    private void addRandomUv(Map<String, Object> face, int size) {
+        int u1 = rnd.nextInt(size);
+        int v1 = rnd.nextInt(size);
+        face.put("uv", List.of(u1, v1, u1 + 1 + rnd.nextInt(size - u1), v1 + 1 + rnd.nextInt(size - v1)));
     }
 
     /** Eight random hex characters. */
