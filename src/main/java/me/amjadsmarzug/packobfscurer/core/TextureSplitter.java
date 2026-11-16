@@ -40,7 +40,7 @@ final class TextureSplitter {
     }
 
     /** One element (part) of a model, with the scale its UVs are measured in. */
-    private record Part(String modelPath, int index, int scaleX, int scaleY, boolean explicitScale, List<Face> faces) {
+    record Part(String modelPath, int index, int scaleX, int scaleY, boolean explicitScale, List<Face> faces) {
         Set<String> refs() {
             Set<String> out = new HashSet<>();
             for (Face f : faces) {
@@ -292,10 +292,13 @@ final class TextureSplitter {
         BufferedImage source = decode(out.get(textureZipPath(sourceRef)));
         int w = source.getWidth();
         int h = source.getHeight();
+        // Junk keeps the original alpha everywhere, so transparent areas stay transparent. Item textures are
+        // mostly transparent, and an opaque filler would show up as solid squares wherever the game samples
+        // just outside a face's UV box. Only the colour is random.
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                img.setRGB(x, y, 0xFF000000 | rnd.nextInt(0x1000000));
+                img.setRGB(x, y, (source.getRGB(x, y) & 0xFF000000) | rnd.nextInt(0x1000000));
             }
         }
         for (Face f : part.faces()) {
@@ -329,7 +332,7 @@ final class TextureSplitter {
 
     /**
      * The pixel box a UV box covers: x1, y1 inclusive and x2, y2 exclusive. Rounded outward, so it
-     * always includes every pixel the face can sample.
+     * always includes every pixel the face can sample, and at least one pixel in each direction.
      */
     static int[] pixelBox(double[] uv, Part part, int w, int h) {
         double sx = w / (double) part.scaleX();
@@ -338,7 +341,12 @@ final class TextureSplitter {
         int x2 = (int) Math.ceil(Math.max(uv[0], uv[2]) * sx);
         int y1 = (int) Math.floor(Math.min(uv[1], uv[3]) * sy);
         int y2 = (int) Math.ceil(Math.max(uv[1], uv[3]) * sy);
-        return new int[]{Math.max(0, x1), Math.max(0, y1), Math.min(w, x2), Math.min(h, y2)};
+        // A face with zero width or height still samples one pixel line, so never return an empty box.
+        x1 = Math.max(0, Math.min(x1, w - 1));
+        y1 = Math.max(0, Math.min(y1, h - 1));
+        x2 = Math.max(x1 + 1, Math.min(x2, w));
+        y2 = Math.max(y1 + 1, Math.min(y2, h));
+        return new int[]{x1, y1, x2, y2};
     }
 
     // ------------------------------------------------------------------ helpers

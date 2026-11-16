@@ -591,6 +591,50 @@ class PackObfuscatorTest {
     }
 
     @Test
+    void junkKeepsTheOriginalAlphaSoTransparentAreasStayTransparent() throws Exception {
+        // Left half opaque red, right half fully transparent. Only the top-left 8x8 box is used by the face.
+        BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 8; x++) {
+                img.setRGB(x, y, 0xFFFF0000);
+            }
+        }
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        ImageIO.write(img, "png", bos);
+        SortedMap<String, byte[]> files = new TreeMap<>();
+        put(files, "pack.mcmeta", "{\"pack\":{\"pack_format\":46,\"description\":\"x\"}}");
+        put(files, "assets/abc/models/item/m.json",
+                "{\"textures\":{\"layer0\":\"abc:item/t\"},\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],"
+                + "\"faces\":{\"north\":{\"uv\":[0,0,8,8],\"texture\":\"#layer0\"}}}]}");
+        putBytes(files, "assets/abc/textures/item/t.png", bos.toByteArray());
+        TextureSplitter.split(files, new Random(5), true);
+
+        Map<?, ?> model = (Map<?, ?>) Json.parse(text(files, "assets/abc/models/item/m.json"));
+        String ref = (String) ((Map<?, ?>) model.get("textures")).values().iterator().next();
+        BufferedImage split = ImageIO.read(new ByteArrayInputStream(files.get(
+                "assets/abc/textures/" + ref.substring(ref.indexOf(':') + 1) + ".png")));
+        assertEquals(0xFFFF0000, split.getRGB(2, 2), "the used box keeps the real pixels");
+        for (int y = 0; y < 16; y++) {
+            for (int x = 8; x < 16; x++) {
+                assertEquals(0, split.getRGB(x, y) >>> 24, "transparent source pixel became opaque at " + x + "," + y);
+            }
+        }
+    }
+
+    @Test
+    void zeroSizeUvFacesStillKeepTheirSampledPixel() {
+        // A face with zero width or height still samples one pixel line. That pixel must not become noise.
+        TextureSplitter.Part part = new TextureSplitter.Part("m", 0, 16, 16, false, List.of());
+        int[] box = TextureSplitter.pixelBox(new double[]{0, 0, 0, 0.75}, part, 16, 16);
+        assertEquals(0, box[0]);
+        assertEquals(1, box[2], "zero-width box must cover one column");
+        assertEquals(0, box[1]);
+        assertEquals(1, box[3], "zero-height box must cover one row");
+        int[] edge = TextureSplitter.pixelBox(new double[]{16, 16, 16, 16}, part, 16, 16);
+        assertTrue(edge[2] > edge[0] && edge[3] > edge[1] && edge[2] <= 16 && edge[3] <= 16, java.util.Arrays.toString(edge));
+    }
+
+    @Test
     void splitterGivesEachPartItsOwnPngWithTheSamePixelsForItsFaces() throws Exception {
         SortedMap<String, byte[]> files = new TreeMap<>();
         put(files, "pack.mcmeta", "{\"pack\":{\"pack_format\":46,\"description\":\"x\"}}");
