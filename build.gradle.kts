@@ -107,14 +107,9 @@ val portableZip = tasks.register<Zip>("portableZip") {
     dirPermissions { unix("rwxr-xr-x") }
 }
 
-// Installer per OS: .exe on Windows, .dmg on macOS, .deb on Linux.
-val installer = tasks.register<Exec>("jpackageInstaller") {
-    dependsOn(stageJar)
-    group = "distribution"
-    description = "Builds the native installer for the current OS."
-    val outDir = distDir.get().asFile
-    doFirst { outDir.mkdirs() }
-    val args = mutableListOf(
+// Native installers. Each OS builds its own: .exe on Windows, .dmg on macOS, .deb and .rpm on Linux.
+fun jpackageArgs(outDir: File, type: List<String>): List<String> =
+    listOf(
         jpackageExe,
         "--name", appName,
         "--app-version", appVersion,
@@ -126,17 +121,36 @@ val installer = tasks.register<Exec>("jpackageInstaller") {
         "--description", "Obfuscates Minecraft resource packs",
         "--java-options", "-Xmx1g",
         "--java-options", "-Dfile.encoding=UTF-8"
-    )
-    when {
-        isWindows -> args += listOf("--type", "exe", "--win-menu", "--win-shortcut", "--win-dir-chooser", "--win-per-user-install")
-        isMac -> args += listOf("--type", "dmg")
-        else -> args += listOf("--type", "deb", "--linux-shortcut", "--linux-menu-group", "Utility")
+    ) + type
+
+val installer = tasks.register<Exec>("jpackageInstaller") {
+    dependsOn(stageJar)
+    group = "distribution"
+    description = "Builds the native installer for the current OS (exe, dmg or deb)."
+    val outDir = distDir.get().asFile
+    doFirst { outDir.mkdirs() }
+    val type = when {
+        isWindows -> listOf("--type", "exe", "--win-menu", "--win-shortcut", "--win-dir-chooser", "--win-per-user-install")
+        isMac -> listOf("--type", "dmg")
+        else -> listOf("--type", "deb", "--linux-shortcut", "--linux-menu-group", "Utility")
     }
-    commandLine(args)
+    commandLine(jpackageArgs(outDir, type))
+}
+
+// RPM for Fedora, RHEL and openSUSE. jpackage needs rpmbuild on the PATH (the rpm package on Debian/Ubuntu).
+val rpmInstaller = tasks.register<Exec>("jpackageRpm") {
+    dependsOn(stageJar)
+    group = "distribution"
+    description = "Builds the .rpm installer (Linux only)."
+    val outDir = distDir.get().asFile
+    doFirst { outDir.mkdirs() }
+    commandLine(jpackageArgs(outDir, listOf("--type", "rpm", "--linux-shortcut", "--linux-menu-group", "Utility")))
+    onlyIf { !isWindows && !isMac }
 }
 
 tasks.register("packageAll") {
     group = "distribution"
-    description = "Portable archive plus native installer for this OS."
+    description = "Portable archive plus native installers for this OS (includes .rpm on Linux)."
     dependsOn(portableZip, installer)
+    dependsOn(rpmInstaller)
 }

@@ -104,6 +104,25 @@ jobs:
         shell: bash
         run: echo "::warning::Native installer failed on ${{ matrix.platform }}. The portable archive is still published."
 
+      # jpackage builds the .rpm with rpmbuild, which is not installed on Ubuntu runners by default.
+      - name: Install RPM tools (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build RPM (Linux)
+        if: runner.os == 'Linux'
+        id: rpm
+        shell: bash
+        continue-on-error: true
+        run: |
+          ./gradlew jpackageRpm -PappVersion=${{ steps.version.outputs.version }} --no-daemon --console=plain
+
+      - name: Warn if the RPM was skipped
+        if: runner.os == 'Linux' && steps.rpm.outcome == 'failure'
+        shell: bash
+        run: echo "::warning::RPM build failed. The .deb and portable archive are still published."
+
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
